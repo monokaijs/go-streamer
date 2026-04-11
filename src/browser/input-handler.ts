@@ -103,21 +103,27 @@ export class InputHandler {
     if (!this.cdp) return;
     try {
       const isKeyDown = data.type === 'keydown';
-      const cdpType = isKeyDown
-        ? (data.text ? 'keyDown' : 'rawKeyDown')
-        : 'keyUp';
 
       await this.cdp.send('Input.dispatchKeyEvent', {
-        type: cdpType,
+        type: isKeyDown ? 'rawKeyDown' : 'keyUp',
         key: data.key,
         code: data.code,
         windowsVirtualKeyCode: data.keyCode,
         nativeVirtualKeyCode: data.keyCode,
         modifiers: data.modifiers || 0,
-        text: isKeyDown ? data.text : undefined,
-        unmodifiedText: isKeyDown ? data.text : undefined,
         location: data.location,
       });
+
+      if (isKeyDown && data.text) {
+        await this.cdp.send('Input.dispatchKeyEvent', {
+          type: 'char',
+          text: data.text,
+          unmodifiedText: data.text,
+          key: data.key,
+          code: data.code,
+          modifiers: data.modifiers || 0,
+        });
+      }
     } catch {}
   }
 
