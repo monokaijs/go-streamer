@@ -395,19 +395,23 @@ function updatePresetHighlight(w, h) {
   resolutionDisplay.textContent = w + '×' + h;
 }
 
+function confirmResolution(w, h) {
+  if (w === streamWidth && h === streamHeight) return;
+  if (!confirm(`Change resolution to ${w}×${h}?\n\nThis will restart the browser session.`)) return;
+  socket.emit('settings:resolution', { width: w, height: h });
+}
+
 document.getElementById('resolution-presets').addEventListener('click', (e) => {
   const btn = e.target.closest('.preset-btn');
   if (!btn) return;
-  const w = parseInt(btn.dataset.w);
-  const h = parseInt(btn.dataset.h);
-  socket.emit('settings:resolution', { width: w, height: h });
+  confirmResolution(parseInt(btn.dataset.w), parseInt(btn.dataset.h));
 });
 
 function applyCustomResolution() {
   const w = parseInt(customWidthInput.value);
   const h = parseInt(customHeightInput.value);
   if (w >= 320 && w <= 3840 && h >= 240 && h <= 2160) {
-    socket.emit('settings:resolution', { width: w, height: h });
+    confirmResolution(w, h);
   }
 }
 

@@ -7,6 +7,10 @@ chmod 700 "$XDG_RUNTIME_DIR"
 STREAM_WIDTH="${STREAM_WIDTH:-1280}"
 STREAM_HEIGHT="${STREAM_HEIGHT:-720}"
 
+if [ -f /tmp/stream_resolution ]; then
+  source /tmp/stream_resolution
+fi
+
 rm -f /tmp/.X99-lock /tmp/.X11-unix/X99
 pulseaudio --kill 2>/dev/null || true
 

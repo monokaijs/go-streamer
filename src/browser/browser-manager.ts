@@ -258,21 +258,10 @@ export class BrowserManager extends EventEmitter {
   }
 
   async setResolution(width: number, height: number) {
-    this.currentWidth = width;
-    this.currentHeight = height;
-
-    for (const [, page] of this.pages) {
-      try {
-        await page.setViewport({ width, height });
-      } catch {}
-    }
-
-    if (this.activePageId) {
-      await this.startScreencast(this.activePageId);
-    }
-
-    this.emit('settings:updated', this.getSettings());
-    console.log(`[Browser] Resolution set to ${width}x${height}`);
+    const fs = await import('fs');
+    fs.writeFileSync('/tmp/stream_resolution', `STREAM_WIDTH=${width}\nSTREAM_HEIGHT=${height}\n`);
+    console.log(`[Browser] Resolution changed to ${width}x${height}, restarting...`);
+    process.exit(0);
   }
 
   getSettings() {
