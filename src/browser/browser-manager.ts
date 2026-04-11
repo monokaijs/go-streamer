@@ -261,6 +261,12 @@ export class BrowserManager extends EventEmitter {
     this.currentWidth = width;
     this.currentHeight = height;
 
+    for (const [, page] of this.pages) {
+      try {
+        await page.setViewport({ width, height });
+      } catch {}
+    }
+
     if (this.activePageId) {
       await this.startScreencast(this.activePageId);
     }
