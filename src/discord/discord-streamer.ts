@@ -125,9 +125,14 @@ export class DiscordStreamer {
       } catch {}
     }
 
+    const hwInit = hwAccel === 'vaapi'
+      ? ['-vaapi_device', '/dev/dri/renderD128']
+      : [];
+
     let videoInput: string[];
     if (useXvfb) {
       videoInput = [
+        '-thread_queue_size', '512',
         '-f', 'x11grab',
         '-framerate', String(fps),
         '-video_size', `${width}x${height}`,
@@ -142,7 +147,7 @@ export class DiscordStreamer {
     }
 
     const audioInput = usePulse
-      ? ['-f', 'pulse', '-i', 'virtual_sink.monitor']
+      ? ['-thread_queue_size', '512', '-f', 'pulse', '-i', 'virtual_sink.monitor']
       : ['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo'];
 
     let videoEncode: string[];
@@ -156,7 +161,6 @@ export class DiscordStreamer {
       ];
     } else if (hwAccel === 'vaapi') {
       videoEncode = [
-        '-vaapi_device', '/dev/dri/renderD128',
         '-vf', 'format=nv12,hwupload',
         '-c:v', 'h264_vaapi',
         '-b:v', '5000k', '-maxrate:v', '7500k', '-bufsize:v', '2500k',
@@ -173,7 +177,10 @@ export class DiscordStreamer {
 
     const ffmpegArgs = [
       '-fflags', 'nobuffer',
+      '-flags', 'low_delay',
+      '-probesize', '32',
       '-analyzeduration', '0',
+      ...hwInit,
       ...videoInput,
       ...audioInput,
       '-map', '0:v', '-map', '1:a',
@@ -238,9 +245,6 @@ export class DiscordStreamer {
     this.currentGuildId = null;
     this.currentChannelId = null;
     console.log('[Discord] Stream stopped');
-  }
-
-  pushFrame(_frameBase64: string) {
   }
 
   async shutdown() {

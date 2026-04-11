@@ -33,6 +33,8 @@ export class BrowserManager extends EventEmitter {
   private screencastRunning = false;
   private currentWidth = config.stream.width;
   private currentHeight = config.stream.height;
+  private lastFrameTime = 0;
+  private readonly previewFps = 15;
 
   async launch() {
     const useXvfb = !!process.env.DISPLAY;
@@ -156,14 +158,18 @@ export class BrowserManager extends EventEmitter {
           this.emit('settings:updated', this.getSettings());
         }
       }
-      this.emit('frame', frame.data);
+      const now = Date.now();
+      if (now - this.lastFrameTime >= 1000 / this.previewFps) {
+        this.lastFrameTime = now;
+        this.emit('frame', frame.data);
+      }
     });
 
     await cdp.send('Page.startScreencast', {
       format: 'jpeg',
-      quality: 80,
-      maxWidth: this.currentWidth,
-      maxHeight: this.currentHeight,
+      quality: 60,
+      maxWidth: 960,
+      maxHeight: 540,
       everyNthFrame: 1,
     });
 
@@ -231,12 +237,21 @@ export class BrowserManager extends EventEmitter {
   }
 
   getTabList(): TabInfo[] {
+    return this.getTabListSync();
+  }
+
+  private getTabListSync(): TabInfo[] {
     const tabs: TabInfo[] = [];
     for (const [id, page] of this.pages) {
       if (page.isClosed()) continue;
+      let title = 'Tab';
+      try {
+        const url = page.url();
+        title = url === 'about:blank' ? 'New Tab' : new URL(url).hostname;
+      } catch {}
       tabs.push({
         id,
-        title: page.url() === 'about:blank' ? 'New Tab' : (page.title instanceof Function ? 'Loading...' : 'Tab'),
+        title,
         url: page.url(),
         active: id === this.activePageId,
       });

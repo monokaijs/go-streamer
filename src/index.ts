@@ -28,10 +28,6 @@ async function main() {
   try {
     await browserManager.launch();
 
-    browserManager.on('frame', (frameBase64: string) => {
-      discordStreamer.pushFrame(frameBase64);
-    });
-
     if (config.discord.token) {
       console.log('[Main] Discord token found, logging in...');
       await discordStreamer.login();

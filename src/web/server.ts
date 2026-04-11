@@ -134,12 +134,17 @@ export class WebServer {
       });
     });
 
+    let tabUpdateTimer: ReturnType<typeof setTimeout> | null = null;
+
     this.browserManager.on('frame', (frameBase64: string) => {
-      this.io.emit('frame', frameBase64);
+      this.io.volatile.emit('frame', frameBase64);
     });
 
     this.browserManager.on('tabs:updated', (tabs: unknown) => {
-      this.io.emit('tabs:updated', tabs);
+      if (tabUpdateTimer) clearTimeout(tabUpdateTimer);
+      tabUpdateTimer = setTimeout(() => {
+        this.io.emit('tabs:updated', tabs);
+      }, 100);
     });
 
     this.browserManager.on('settings:updated', (settings: unknown) => {

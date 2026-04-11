@@ -98,15 +98,20 @@ function onDisconnected() {
 }
 
 function setupSocketListeners() {
+  const frameImg = new Image();
+  let frameLoading = false;
+  frameImg.onload = () => {
+    canvas.width = frameImg.width;
+    canvas.height = frameImg.height;
+    ctx.drawImage(frameImg, 0, 0);
+    frameCount++;
+    frameLoading = false;
+  };
+
   socket.on('frame', (base64) => {
-    const img = new Image();
-    img.onload = () => {
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.drawImage(img, 0, 0);
-      frameCount++;
-    };
-    img.src = 'data:image/jpeg;base64,' + base64;
+    if (frameLoading) return;
+    frameLoading = true;
+    frameImg.src = 'data:image/jpeg;base64,' + base64;
   });
 
 setInterval(() => {
