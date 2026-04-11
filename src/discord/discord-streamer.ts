@@ -112,13 +112,18 @@ export class DiscordStreamer {
     const useXvfb = !!process.env.DISPLAY;
     const usePulse = !!process.env.PULSE_SERVER;
 
-    let useVaapi = false;
+    let hwAccel: 'nvenc' | 'vaapi' | 'none' = 'none';
     try {
-      if (fs.existsSync('/dev/dri/renderD128')) {
-        execSync('vainfo 2>&1', { timeout: 3000 });
-        useVaapi = true;
-      }
-    } catch {}
+      execSync('nvidia-smi 2>&1', { timeout: 3000 });
+      hwAccel = 'nvenc';
+    } catch {
+      try {
+        if (fs.existsSync('/dev/dri/renderD128')) {
+          execSync('vainfo 2>&1', { timeout: 3000 });
+          hwAccel = 'vaapi';
+        }
+      } catch {}
+    }
 
     let videoInput: string[];
     if (useXvfb) {
@@ -141,7 +146,15 @@ export class DiscordStreamer {
       : ['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo'];
 
     let videoEncode: string[];
-    if (useVaapi) {
+    if (hwAccel === 'nvenc') {
+      videoEncode = [
+        '-c:v', 'h264_nvenc',
+        '-preset', 'p4', '-tune', 'll',
+        '-pix_fmt', 'yuv420p',
+        '-b:v', '5000k', '-maxrate:v', '7500k', '-bufsize:v', '2500k',
+        '-bf', '0',
+      ];
+    } else if (hwAccel === 'vaapi') {
       videoEncode = [
         '-vaapi_device', '/dev/dri/renderD128',
         '-vf', 'format=nv12,hwupload',
@@ -192,7 +205,7 @@ export class DiscordStreamer {
     this.streaming = true;
     const mode = useXvfb ? `x11grab(${display})` : 'fallback';
     const audio = usePulse ? 'pulse' : 'silent';
-    const encoder = useVaapi ? 'h264_vaapi' : 'libx264';
+    const encoder = hwAccel === 'nvenc' ? 'h264_nvenc' : hwAccel === 'vaapi' ? 'h264_vaapi' : 'libx264';
     console.log(`[Discord] Go Live at ${width}x${height}@${fps}fps [video:${mode} encoder:${encoder} audio:${audio}]`);
 
     try {
