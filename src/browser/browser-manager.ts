@@ -47,7 +47,6 @@ export class BrowserManager extends EventEmitter {
         '--autoplay-policy=no-user-gesture-required',
         '--disable-infobars',
         '--window-position=0,0',
-        '--start-fullscreen',
         `--window-size=${config.stream.width},${config.stream.height}`,
       ],
       defaultViewport: useXvfb ? null : {
@@ -67,36 +66,37 @@ export class BrowserManager extends EventEmitter {
         const page = await target.page();
         if (page) {
           await this.registerPage(page);
-          this.emit('tabs:updated', this.getTabList());
+          const id = this.getPageId(page);
+          await this.switchTab(id);
         }
       }
     });
 
-    this.browser.on('targetdestroyed', (target: Target) => {
-      let destroyedId: string | null = null;
+    this.browser.on('targetdestroyed', async () => {
+      const closedIds: string[] = [];
       for (const [id, page] of this.pages) {
-        try {
-          page.url();
-        } catch {
-          destroyedId = id;
-          break;
+        if (page.isClosed()) {
+          closedIds.push(id);
         }
-      }
-      if (!destroyedId) return;
-      const pageId = destroyedId;
-      this.pages.delete(pageId);
-      const cdp = this.cdpSessions.get(pageId);
-      if (cdp) {
-        cdp.detach().catch(() => {});
-        this.cdpSessions.delete(pageId);
       }
 
-      if (this.activePageId === pageId) {
-        const remaining = Array.from(this.pages.keys());
-        if (remaining.length > 0) {
-          this.switchTab(remaining[0]);
+      for (const id of closedIds) {
+        this.pages.delete(id);
+        const cdp = this.cdpSessions.get(id);
+        if (cdp) {
+          cdp.removeAllListeners();
+          cdp.detach().catch(() => {});
+          this.cdpSessions.delete(id);
         }
       }
+
+      if (closedIds.includes(this.activePageId!)) {
+        const remaining = Array.from(this.pages.keys());
+        if (remaining.length > 0) {
+          await this.switchTab(remaining[remaining.length - 1]);
+        }
+      }
+
       this.emit('tabs:updated', this.getTabList());
     });
 
@@ -224,6 +224,7 @@ export class BrowserManager extends EventEmitter {
   getTabList(): TabInfo[] {
     const tabs: TabInfo[] = [];
     for (const [id, page] of this.pages) {
+      if (page.isClosed()) continue;
       tabs.push({
         id,
         title: page.url() === 'about:blank' ? 'New Tab' : (page.title instanceof Function ? 'Loading...' : 'Tab'),
@@ -237,6 +238,7 @@ export class BrowserManager extends EventEmitter {
   async getTabListAsync(): Promise<TabInfo[]> {
     const tabs: TabInfo[] = [];
     for (const [id, page] of this.pages) {
+      if (page.isClosed()) continue;
       let title: string;
       try {
         title = await page.title();
@@ -256,12 +258,6 @@ export class BrowserManager extends EventEmitter {
   async setResolution(width: number, height: number) {
     this.currentWidth = width;
     this.currentHeight = height;
-
-    for (const [, page] of this.pages) {
-      try {
-        await page.setViewport({ width, height });
-      } catch {}
-    }
 
     if (this.activePageId) {
       await this.startScreencast(this.activePageId);
