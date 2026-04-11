@@ -4,11 +4,13 @@ export XDG_RUNTIME_DIR=/tmp/runtime-root
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
 
-mkdir -p /tmp/pulse
-cat > /tmp/pulse/default.pa << 'EOF'
-load-module module-null-sink sink_name=virtual_sink sink_properties=device.description="VirtualSink"
-set-default-sink virtual_sink
-EOF
+STREAM_WIDTH="${STREAM_WIDTH:-1280}"
+STREAM_HEIGHT="${STREAM_HEIGHT:-720}"
+
+Xvfb :99 -screen 0 "${STREAM_WIDTH}x${STREAM_HEIGHT}x24" -nolisten tcp &
+sleep 1
+export DISPLAY=:99
+echo "[Video] Xvfb started on :99 (${STREAM_WIDTH}x${STREAM_HEIGHT})"
 
 pulseaudio \
   --daemonize=yes \
@@ -22,16 +24,14 @@ pulseaudio \
   --load="module-null-sink sink_name=virtual_sink sink_properties=device.description=VirtualSink" \
   --load="module-always-sink" \
   2>&1 || true
-
 sleep 0.5
 
 if pactl info >/dev/null 2>&1; then
   pactl set-default-sink virtual_sink
+  export PULSE_SERVER="unix:${XDG_RUNTIME_DIR}/pulse/native"
   echo "[Audio] PulseAudio running with virtual sink"
 else
   echo "[Audio] PulseAudio failed, using silent audio fallback"
-  unset PULSE_SERVER
 fi
 
-export PULSE_SERVER="${PULSE_SERVER:-unix:${XDG_RUNTIME_DIR}/pulse/native}"
 exec node dist/index.js

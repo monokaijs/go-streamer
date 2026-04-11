@@ -1,6 +1,5 @@
 import { Client } from 'discord.js-selfbot-v13';
 import { Streamer, playStream } from '@dank074/discord-video-stream';
-import { PassThrough } from 'stream';
 import { config } from '../config.js';
 
 interface GuildInfo {
@@ -18,10 +17,8 @@ interface ChannelInfo {
 export class DiscordStreamer {
   private streamer: Streamer;
   private client: Client;
-  private frameStream: PassThrough | null = null;
   private streaming = false;
-  private frameInterval: NodeJS.Timeout | null = null;
-  private latestFrame: Buffer | null = null;
+  private ffmpegProcess: any = null;
   private loggedIn = false;
   private currentGuildId: string | null = null;
   private currentChannelId: string | null = null;
@@ -110,7 +107,26 @@ export class DiscordStreamer {
       fps: this.streamFps,
     };
 
+    const display = process.env.DISPLAY || ':99';
+    const useXvfb = !!process.env.DISPLAY;
     const usePulse = !!process.env.PULSE_SERVER;
+
+    let videoInput: string[];
+    if (useXvfb) {
+      videoInput = [
+        '-f', 'x11grab',
+        '-framerate', String(fps),
+        '-video_size', `${width}x${height}`,
+        '-draw_mouse', '0',
+        '-i', display,
+      ];
+    } else {
+      videoInput = [
+        '-f', 'lavfi',
+        '-i', `color=c=black:s=${width}x${height}:r=${fps}`,
+      ];
+    }
+
     const audioInput = usePulse
       ? ['-f', 'pulse', '-i', 'virtual_sink.monitor']
       : ['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo'];
@@ -118,13 +134,9 @@ export class DiscordStreamer {
     const ffmpegArgs = [
       '-fflags', 'nobuffer',
       '-analyzeduration', '0',
-      '-f', 'image2pipe',
-      '-framerate', String(fps),
-      '-c:v', 'mjpeg',
-      '-i', 'pipe:0',
+      ...videoInput,
       ...audioInput,
       '-map', '0:v', '-map', '1:a',
-      '-vf', `scale=${width}:${height}`,
       '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
       '-pix_fmt', 'yuv420p',
       '-b:v', '5000k', '-maxrate:v', '7500k', '-bufsize:v', '2500k',
@@ -135,12 +147,13 @@ export class DiscordStreamer {
       '-f', 'nut', 'pipe:1',
     ];
 
-    const ffmpegProcess = spawn('ffmpeg', ffmpegArgs, {
-      stdio: ['pipe', 'pipe', 'pipe'],
+    const ffmpeg = spawn('ffmpeg', ffmpegArgs, {
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
+    this.ffmpegProcess = ffmpeg;
 
     let stderrLineCount = 0;
-    ffmpegProcess.stderr?.on('data', (data: Buffer) => {
+    ffmpeg.stderr?.on('data', (data: Buffer) => {
       const msg = data.toString().trim();
       stderrLineCount++;
       if (stderrLineCount <= 20 || msg.includes('Error') || msg.includes('error')) {
@@ -148,29 +161,17 @@ export class DiscordStreamer {
       }
     });
 
-    ffmpegProcess.on('close', (code: number | null) => {
+    ffmpeg.on('close', (code: number | null) => {
       console.log(`[Discord] FFmpeg exited with code ${code}`);
     });
 
-    this.frameStream = new PassThrough();
-    this.frameStream.pipe(ffmpegProcess.stdin!);
-
-    let frameWriteCount = 0;
-    this.frameInterval = setInterval(() => {
-      if (this.latestFrame && this.frameStream && !this.frameStream.destroyed) {
-        this.frameStream.write(this.latestFrame);
-        frameWriteCount++;
-        if (frameWriteCount === 1) {
-          console.log(`[Discord] First frame written (${this.latestFrame.length} bytes)`);
-        }
-      }
-    }, 1000 / fps);
-
     this.streaming = true;
-    console.log(`[Discord] Go Live started at ${width}x${height}@${fps}fps (with audio)`);
+    const mode = useXvfb ? `x11grab(${display})` : 'fallback';
+    const audio = usePulse ? 'pulse' : 'silent';
+    console.log(`[Discord] Go Live at ${width}x${height}@${fps}fps [video:${mode} audio:${audio}]`);
 
     try {
-      await playStream(ffmpegProcess.stdout!, this.streamer, {
+      await playStream(ffmpeg.stdout!, this.streamer, {
         type: 'go-live',
         width,
         height,
@@ -182,23 +183,16 @@ export class DiscordStreamer {
       console.error('[Discord] Streaming error:', err);
     } finally {
       this.streaming = false;
-      if (this.frameInterval) {
-        clearInterval(this.frameInterval);
-        this.frameInterval = null;
-      }
-      ffmpegProcess.kill('SIGTERM');
+      ffmpeg.kill('SIGTERM');
+      this.ffmpegProcess = null;
     }
   }
 
   async stopStream() {
     this.streaming = false;
-    if (this.frameInterval) {
-      clearInterval(this.frameInterval);
-      this.frameInterval = null;
-    }
-    if (this.frameStream) {
-      this.frameStream.end();
-      this.frameStream = null;
+    if (this.ffmpegProcess) {
+      this.ffmpegProcess.kill('SIGTERM');
+      this.ffmpegProcess = null;
     }
     try {
       this.streamer.stopStream();
@@ -208,9 +202,7 @@ export class DiscordStreamer {
     console.log('[Discord] Stream stopped');
   }
 
-  pushFrame(frameBase64: string) {
-    const buffer = Buffer.from(frameBase64, 'base64');
-    this.latestFrame = buffer;
+  pushFrame(_frameBase64: string) {
   }
 
   async shutdown() {

@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y \
   ffmpeg \
   pulseaudio \
   dbus \
+  xvfb \
   fonts-liberation \
   fonts-noto-color-emoji \
   --no-install-recommends \

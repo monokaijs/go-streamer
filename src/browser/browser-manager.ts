@@ -35,15 +35,17 @@ export class BrowserManager extends EventEmitter {
   private currentHeight = config.stream.height;
 
   async launch() {
+    const useXvfb = !!process.env.DISPLAY;
+
     this.browser = await puppeteer.launch({
-      headless: 'shell',
+      headless: !useXvfb,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-gpu',
         '--disable-dev-shm-usage',
         '--autoplay-policy=no-user-gesture-required',
-        '--no-mute-audio',
+        '--start-maximized',
         `--window-size=${config.stream.width},${config.stream.height}`,
       ],
       defaultViewport: {
