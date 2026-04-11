@@ -101,8 +101,6 @@ function setupSocketListeners() {
   socket.on('frame', (base64) => {
     const img = new Image();
     img.onload = () => {
-      streamWidth = img.width;
-      streamHeight = img.height;
       canvas.width = img.width;
       canvas.height = img.height;
       ctx.drawImage(img, 0, 0);
@@ -427,6 +425,8 @@ customHeightInput.addEventListener('keydown', (e) => {
 });
 
   socket.on('settings:updated', (settings) => {
+    streamWidth = settings.width;
+    streamHeight = settings.height;
     updatePresetHighlight(settings.width, settings.height);
   });
 
