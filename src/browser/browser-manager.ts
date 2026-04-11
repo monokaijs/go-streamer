@@ -36,13 +36,14 @@ export class BrowserManager extends EventEmitter {
 
   async launch() {
     this.browser = await puppeteer.launch({
-      headless: true,
+      headless: 'shell',
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-gpu',
         '--disable-dev-shm-usage',
         '--autoplay-policy=no-user-gesture-required',
+        '--no-mute-audio',
         `--window-size=${config.stream.width},${config.stream.height}`,
       ],
       defaultViewport: {

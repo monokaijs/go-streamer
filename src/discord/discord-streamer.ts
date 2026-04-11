@@ -139,10 +139,12 @@ export class DiscordStreamer {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
+    let stderrLineCount = 0;
     ffmpegProcess.stderr?.on('data', (data: Buffer) => {
       const msg = data.toString().trim();
-      if (msg.includes('Error') || msg.includes('error')) {
-        console.error('[Discord] FFmpeg:', msg);
+      stderrLineCount++;
+      if (stderrLineCount <= 20 || msg.includes('Error') || msg.includes('error')) {
+        console.log('[Discord] FFmpeg:', msg);
       }
     });
 
