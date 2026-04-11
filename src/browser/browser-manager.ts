@@ -146,15 +146,24 @@ export class BrowserManager extends EventEmitter {
       try {
         await cdp.send('Page.screencastFrameAck', { sessionId: frame.sessionId });
       } catch {}
+      if (frame.metadata?.deviceWidth && frame.metadata?.deviceHeight) {
+        const vw = frame.metadata.deviceWidth;
+        const vh = frame.metadata.deviceHeight;
+        if (vw !== this.currentWidth || vh !== this.currentHeight) {
+          this.currentWidth = vw;
+          this.currentHeight = vh;
+          this.emit('settings:updated', this.getSettings());
+        }
+      }
       this.emit('frame', frame.data);
     });
 
     await cdp.send('Page.startScreencast', {
       format: 'jpeg',
-      quality: 50,
-      maxWidth: 960,
-      maxHeight: 540,
-      everyNthFrame: 2,
+      quality: 80,
+      maxWidth: this.currentWidth,
+      maxHeight: this.currentHeight,
+      everyNthFrame: 1,
     });
 
     this.screencastRunning = true;
