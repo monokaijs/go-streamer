@@ -11,8 +11,8 @@ export const config = {
     port: parseInt(process.env.WEB_PORT || '3000', 10),
   },
   stream: {
-    width: parseInt(process.env.STREAM_WIDTH || '1280', 10),
-    height: parseInt(process.env.STREAM_HEIGHT || '720', 10),
+    width: parseInt(process.env.STREAM_WIDTH || '1920', 10),
+    height: parseInt(process.env.STREAM_HEIGHT || '1080', 10),
     fps: parseInt(process.env.STREAM_FPS || '30', 10),
   },
 };

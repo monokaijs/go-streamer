@@ -4,8 +4,8 @@ export XDG_RUNTIME_DIR=/tmp/runtime-root
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
 
-STREAM_WIDTH="${STREAM_WIDTH:-1280}"
-STREAM_HEIGHT="${STREAM_HEIGHT:-720}"
+STREAM_WIDTH="${STREAM_WIDTH:-1920}"
+STREAM_HEIGHT="${STREAM_HEIGHT:-1080}"
 
 if [ -f /tmp/stream_resolution ]; then
   source /tmp/stream_resolution
@@ -41,4 +41,5 @@ else
   echo "[Audio] PulseAudio failed, using silent audio fallback"
 fi
 
+export STREAM_WIDTH STREAM_HEIGHT
 exec node dist/index.js
