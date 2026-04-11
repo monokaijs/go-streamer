@@ -47,8 +47,7 @@ loginForm.addEventListener('submit', (e) => {
   connectSocket(pw);
 });
 
-const savedToken = sessionStorage.getItem('go_streamer_token');
-connectSocket(savedToken || '');
+
 
 const canvas = document.getElementById('screen');
 const ctx = canvas.getContext('2d');
@@ -544,3 +543,6 @@ refreshBtn.addEventListener('click', loadGuilds);
     streamBtn.classList.remove('streaming');
   });
 }
+
+const savedToken = sessionStorage.getItem('go_streamer_token');
+connectSocket(savedToken || '');
