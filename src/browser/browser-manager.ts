@@ -50,7 +50,7 @@ export class BrowserManager extends EventEmitter {
         '--start-fullscreen',
         `--window-size=${config.stream.width},${config.stream.height}`,
       ],
-      defaultViewport: {
+      defaultViewport: useXvfb ? null : {
         width: config.stream.width,
         height: config.stream.height,
       },
@@ -60,16 +60,6 @@ export class BrowserManager extends EventEmitter {
     if (pages.length > 0) {
       await this.registerPage(pages[0]);
       this.activePageId = this.getPageId(pages[0]);
-
-      if (useXvfb) {
-        const cdp = await pages[0].createCDPSession();
-        const { windowId } = await cdp.send('Browser.getWindowForTarget');
-        await cdp.send('Browser.setWindowBounds', {
-          windowId,
-          bounds: { left: 0, top: 0, width: config.stream.width, height: config.stream.height, windowState: 'normal' },
-        });
-        await cdp.detach();
-      }
     }
 
     this.browser.on('targetcreated', async (target: Target) => {
@@ -104,10 +94,9 @@ export class BrowserManager extends EventEmitter {
       if (this.activePageId === pageId) {
         const remaining = Array.from(this.pages.keys());
         if (remaining.length > 0) {
-          this.switchTab(remaining[remaining.length - 1]).catch(() => {});
+          this.switchTab(remaining[0]);
         }
       }
-
       this.emit('tabs:updated', this.getTabList());
     });
 
@@ -141,6 +130,7 @@ export class BrowserManager extends EventEmitter {
   private async startScreencast(pageId: string) {
     if (this.screencastRunning && this.activeCdp) {
       try {
+        this.activeCdp.removeAllListeners('Page.screencastFrame');
         await this.activeCdp.send('Page.stopScreencast');
       } catch {}
       this.screencastRunning = false;
@@ -153,7 +143,7 @@ export class BrowserManager extends EventEmitter {
     this.activePageId = pageId;
     this.inputHandler.setCdpSession(cdp);
 
-    cdp.on('Page.screencastFrame', async (frame) => {
+    cdp.on('Page.screencastFrame', async (frame: any) => {
       try {
         await cdp.send('Page.screencastFrameAck', { sessionId: frame.sessionId });
       } catch {}
@@ -176,8 +166,8 @@ export class BrowserManager extends EventEmitter {
     const page = this.pages.get(pageId);
     if (!page) return;
 
-    await this.startScreencast(pageId);
     await page.bringToFront();
+    await this.startScreencast(pageId);
     this.emit('tabs:updated', this.getTabList());
   }
 
