@@ -42,6 +42,7 @@ export class BrowserManager extends EventEmitter {
         '--disable-setuid-sandbox',
         '--disable-gpu',
         '--disable-dev-shm-usage',
+        '--autoplay-policy=no-user-gesture-required',
         `--window-size=${config.stream.width},${config.stream.height}`,
       ],
       defaultViewport: {
@@ -146,7 +147,7 @@ export class BrowserManager extends EventEmitter {
 
     await cdp.send('Page.startScreencast', {
       format: 'jpeg',
-      quality: 70,
+      quality: 90,
       maxWidth: this.currentWidth,
       maxHeight: this.currentHeight,
       everyNthFrame: 1,
