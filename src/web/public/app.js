@@ -405,21 +405,24 @@ document.getElementById('resolution-presets').addEventListener('click', (e) => {
   socket.emit('settings:resolution', { width: w, height: h });
 });
 
-document.getElementById('apply-resolution').addEventListener('click', () => {
+function applyCustomResolution() {
   const w = parseInt(customWidthInput.value);
   const h = parseInt(customHeightInput.value);
   if (w >= 320 && w <= 3840 && h >= 240 && h <= 2160) {
     socket.emit('settings:resolution', { width: w, height: h });
   }
-});
+}
+
+customWidthInput.addEventListener('change', applyCustomResolution);
+customHeightInput.addEventListener('change', applyCustomResolution);
 
 customWidthInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') document.getElementById('apply-resolution').click();
+  if (e.key === 'Enter') applyCustomResolution();
   e.stopPropagation();
 });
 
 customHeightInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') document.getElementById('apply-resolution').click();
+  if (e.key === 'Enter') applyCustomResolution();
   e.stopPropagation();
 });
 
