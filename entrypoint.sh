@@ -12,6 +12,7 @@ if [ -f /tmp/stream_resolution ]; then
 fi
 
 rm -f /tmp/.X99-lock /tmp/.X11-unix/X99
+rm -f /app/data/chrome-profile/SingletonLock /app/data/chrome-profile/SingletonSocket /app/data/chrome-profile/SingletonCookie
 
 killall -9 pulseaudio 2>/dev/null || true
 rm -rf /tmp/runtime-root/pulse
