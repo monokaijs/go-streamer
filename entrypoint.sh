@@ -13,6 +13,11 @@ fi
 
 rm -f /tmp/.X99-lock /tmp/.X11-unix/X99
 rm -f /app/data/chrome-profile/SingletonLock /app/data/chrome-profile/SingletonSocket /app/data/chrome-profile/SingletonCookie
+PREFS="/app/data/chrome-profile/Default/Preferences"
+if [ -f "$PREFS" ]; then
+  sed -i 's/"exited_cleanly":false/"exited_cleanly":true/g' "$PREFS"
+  sed -i 's/"exit_type":"Crashed"/"exit_type":"Normal"/g' "$PREFS"
+fi
 
 killall -9 pulseaudio 2>/dev/null || true
 rm -rf /tmp/runtime-root/pulse
