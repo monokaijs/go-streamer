@@ -49,7 +49,7 @@ export class BrowserManager extends EventEmitter {
         '--window-position=0,0',
         `--window-size=${config.stream.width},${config.stream.height}`,
       ],
-      defaultViewport: useXvfb ? null : {
+      defaultViewport: {
         width: config.stream.width,
         height: config.stream.height,
       },
