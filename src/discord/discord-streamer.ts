@@ -163,7 +163,7 @@ export class DiscordStreamer {
       videoEncode = [
         '-vf', 'format=nv12,hwupload',
         '-c:v', 'h264_vaapi',
-        '-b:v', '5000k', '-maxrate:v', '7500k', '-bufsize:v', '2500k',
+        '-rc_mode', 'CQP', '-qp', '23',
         '-bf', '0',
       ];
     } else {
