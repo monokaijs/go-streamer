@@ -42,12 +42,14 @@ export class BrowserManager extends EventEmitter {
       ignoreDefaultArgs: ['--enable-automation'],
       args: [
         '--no-sandbox',
+        '--test-type',
         '--disable-gpu',
         '--disable-dev-shm-usage',
         '--autoplay-policy=no-user-gesture-required',
         '--disable-infobars',
         '--window-position=0,0',
         `--window-size=${config.stream.width},${config.stream.height}`,
+        '--app=about:blank',
       ],
       defaultViewport: {
         width: config.stream.width,
