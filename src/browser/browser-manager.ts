@@ -51,10 +51,7 @@ export class BrowserManager extends EventEmitter {
         `--window-size=${config.stream.width},${config.stream.height}`,
         '--app=about:blank',
       ],
-      defaultViewport: {
-        width: config.stream.width,
-        height: config.stream.height,
-      },
+      defaultViewport: null,
     });
 
     const pages = await this.browser.pages();
