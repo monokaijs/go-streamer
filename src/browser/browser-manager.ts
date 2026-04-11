@@ -1,0 +1,288 @@
+import puppeteer, { Browser, Page, CDPSession, Target } from 'puppeteer';
+import { EventEmitter } from 'events';
+import { InputHandler } from './input-handler.js';
+import { config } from '../config.js';
+
+let pageIdCounter = 0;
+const pageIdMap = new WeakMap<Page, string>();
+
+function getStablePageId(page: Page): string {
+  let id = pageIdMap.get(page);
+  if (!id) {
+    id = `page_${++pageIdCounter}`;
+    pageIdMap.set(page, id);
+  }
+  return id;
+}
+
+interface TabInfo {
+  id: string;
+  title: string;
+  url: string;
+  active: boolean;
+  favicon?: string;
+}
+
+export class BrowserManager extends EventEmitter {
+  private browser: Browser | null = null;
+  private pages: Map<string, Page> = new Map();
+  private cdpSessions: Map<string, CDPSession> = new Map();
+  private activePageId: string | null = null;
+  private activeCdp: CDPSession | null = null;
+  readonly inputHandler = new InputHandler();
+  private screencastRunning = false;
+  private currentWidth = config.stream.width;
+  private currentHeight = config.stream.height;
+
+  async launch() {
+    this.browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-gpu',
+        '--disable-dev-shm-usage',
+        `--window-size=${config.stream.width},${config.stream.height}`,
+      ],
+      defaultViewport: {
+        width: config.stream.width,
+        height: config.stream.height,
+      },
+    });
+
+    const pages = await this.browser.pages();
+    if (pages.length > 0) {
+      await this.registerPage(pages[0]);
+      this.activePageId = this.getPageId(pages[0]);
+    }
+
+    this.browser.on('targetcreated', async (target: Target) => {
+      if (target.type() === 'page') {
+        const page = await target.page();
+        if (page) {
+          await this.registerPage(page);
+          this.emit('tabs:updated', this.getTabList());
+        }
+      }
+    });
+
+    this.browser.on('targetdestroyed', (target: Target) => {
+      let destroyedId: string | null = null;
+      for (const [id, page] of this.pages) {
+        try {
+          page.url();
+        } catch {
+          destroyedId = id;
+          break;
+        }
+      }
+      if (!destroyedId) return;
+      const pageId = destroyedId;
+      this.pages.delete(pageId);
+      const cdp = this.cdpSessions.get(pageId);
+      if (cdp) {
+        cdp.detach().catch(() => {});
+        this.cdpSessions.delete(pageId);
+      }
+
+      if (this.activePageId === pageId) {
+        const remaining = Array.from(this.pages.keys());
+        if (remaining.length > 0) {
+          this.switchTab(remaining[remaining.length - 1]).catch(() => {});
+        }
+      }
+
+      this.emit('tabs:updated', this.getTabList());
+    });
+
+    if (this.activePageId) {
+      await this.startScreencast(this.activePageId);
+    }
+
+    console.log('[Browser] Launched');
+  }
+
+  private getPageId(page: Page): string {
+    return getStablePageId(page);
+  }
+
+  private async registerPage(page: Page) {
+    const id = this.getPageId(page);
+    this.pages.set(id, page);
+
+    const cdp = await page.createCDPSession();
+    this.cdpSessions.set(id, cdp);
+
+    page.on('load', () => {
+      this.emit('tabs:updated', this.getTabList());
+    });
+
+    page.on('framenavigated', () => {
+      this.emit('tabs:updated', this.getTabList());
+    });
+  }
+
+  private async startScreencast(pageId: string) {
+    if (this.screencastRunning && this.activeCdp) {
+      try {
+        await this.activeCdp.send('Page.stopScreencast');
+      } catch {}
+      this.screencastRunning = false;
+    }
+
+    const cdp = this.cdpSessions.get(pageId);
+    if (!cdp) return;
+
+    this.activeCdp = cdp;
+    this.activePageId = pageId;
+    this.inputHandler.setCdpSession(cdp);
+
+    cdp.on('Page.screencastFrame', async (frame) => {
+      try {
+        await cdp.send('Page.screencastFrameAck', { sessionId: frame.sessionId });
+      } catch {}
+      this.emit('frame', frame.data);
+    });
+
+    await cdp.send('Page.startScreencast', {
+      format: 'jpeg',
+      quality: 70,
+      maxWidth: this.currentWidth,
+      maxHeight: this.currentHeight,
+      everyNthFrame: 1,
+    });
+
+    this.screencastRunning = true;
+    console.log(`[Browser] Screencast started on tab ${pageId}`);
+  }
+
+  async switchTab(pageId: string) {
+    const page = this.pages.get(pageId);
+    if (!page) return;
+
+    await this.startScreencast(pageId);
+    await page.bringToFront();
+    this.emit('tabs:updated', this.getTabList());
+  }
+
+  async createTab(url?: string) {
+    if (!this.browser) return;
+    const page = await this.browser.newPage();
+    const id = this.getPageId(page);
+    if (url) {
+      await page.goto(url).catch(() => {});
+    }
+    await this.switchTab(id);
+  }
+
+  async closeTab(pageId: string) {
+    const page = this.pages.get(pageId);
+    if (!page) return;
+    if (this.pages.size <= 1) return;
+    await page.close();
+  }
+
+  async navigate(url: string) {
+    if (!this.activePageId) return;
+    const page = this.pages.get(this.activePageId);
+    if (!page) return;
+
+    let target = url;
+    if (!target.startsWith('http://') && !target.startsWith('https://')) {
+      target = 'https://' + target;
+    }
+    await page.goto(target).catch(() => {});
+  }
+
+  async goBack() {
+    if (!this.activePageId) return;
+    const page = this.pages.get(this.activePageId);
+    if (!page) return;
+    await page.goBack().catch(() => {});
+  }
+
+  async goForward() {
+    if (!this.activePageId) return;
+    const page = this.pages.get(this.activePageId);
+    if (!page) return;
+    await page.goForward().catch(() => {});
+  }
+
+  async reload() {
+    if (!this.activePageId) return;
+    const page = this.pages.get(this.activePageId);
+    if (!page) return;
+    await page.reload().catch(() => {});
+  }
+
+  getTabList(): TabInfo[] {
+    const tabs: TabInfo[] = [];
+    for (const [id, page] of this.pages) {
+      tabs.push({
+        id,
+        title: page.url() === 'about:blank' ? 'New Tab' : (page.title instanceof Function ? 'Loading...' : 'Tab'),
+        url: page.url(),
+        active: id === this.activePageId,
+      });
+    }
+    return tabs;
+  }
+
+  async getTabListAsync(): Promise<TabInfo[]> {
+    const tabs: TabInfo[] = [];
+    for (const [id, page] of this.pages) {
+      let title: string;
+      try {
+        title = await page.title();
+      } catch {
+        title = 'Tab';
+      }
+      tabs.push({
+        id,
+        title: title || page.url(),
+        url: page.url(),
+        active: id === this.activePageId,
+      });
+    }
+    return tabs;
+  }
+
+  async setResolution(width: number, height: number) {
+    this.currentWidth = width;
+    this.currentHeight = height;
+
+    for (const [, page] of this.pages) {
+      try {
+        await page.setViewport({ width, height });
+      } catch {}
+    }
+
+    if (this.activePageId) {
+      await this.startScreencast(this.activePageId);
+    }
+
+    this.emit('settings:updated', this.getSettings());
+    console.log(`[Browser] Resolution set to ${width}x${height}`);
+  }
+
+  getSettings() {
+    return {
+      width: this.currentWidth,
+      height: this.currentHeight,
+    };
+  }
+
+  async shutdown() {
+    if (this.activeCdp && this.screencastRunning) {
+      try {
+        await this.activeCdp.send('Page.stopScreencast');
+      } catch {}
+    }
+    if (this.browser) {
+      await this.browser.close();
+    }
+    console.log('[Browser] Shut down');
+  }
+}
+
+export type { TabInfo };
