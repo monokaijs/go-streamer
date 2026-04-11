@@ -39,12 +39,14 @@ export class BrowserManager extends EventEmitter {
 
     this.browser = await puppeteer.launch({
       headless: !useXvfb,
+      ignoreDefaultArgs: ['--enable-automation'],
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-gpu',
         '--disable-dev-shm-usage',
         '--autoplay-policy=no-user-gesture-required',
+        '--disable-infobars',
         '--start-maximized',
         `--window-size=${config.stream.width},${config.stream.height}`,
       ],
