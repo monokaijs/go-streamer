@@ -99,7 +99,8 @@ export class DiscordStreamer {
   }
 
   private async startStreamLoop() {
-    const { spawn } = await import('child_process');
+    const { spawn, execSync } = await import('child_process');
+    const fs = await import('fs');
 
     const { width, height, fps } = {
       width: this.streamWidth,
@@ -110,6 +111,14 @@ export class DiscordStreamer {
     const display = process.env.DISPLAY || ':99';
     const useXvfb = !!process.env.DISPLAY;
     const usePulse = !!process.env.PULSE_SERVER;
+
+    let useVaapi = false;
+    try {
+      if (fs.existsSync('/dev/dri/renderD128')) {
+        execSync('vainfo 2>&1', { timeout: 3000 });
+        useVaapi = true;
+      }
+    } catch {}
 
     let videoInput: string[];
     if (useXvfb) {
@@ -131,16 +140,31 @@ export class DiscordStreamer {
       ? ['-f', 'pulse', '-i', 'virtual_sink.monitor']
       : ['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo'];
 
+    let videoEncode: string[];
+    if (useVaapi) {
+      videoEncode = [
+        '-vaapi_device', '/dev/dri/renderD128',
+        '-vf', 'format=nv12,hwupload',
+        '-c:v', 'h264_vaapi',
+        '-b:v', '5000k', '-maxrate:v', '7500k', '-bufsize:v', '2500k',
+        '-bf', '0',
+      ];
+    } else {
+      videoEncode = [
+        '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
+        '-pix_fmt', 'yuv420p',
+        '-b:v', '5000k', '-maxrate:v', '7500k', '-bufsize:v', '2500k',
+        '-bf', '0',
+      ];
+    }
+
     const ffmpegArgs = [
       '-fflags', 'nobuffer',
       '-analyzeduration', '0',
       ...videoInput,
       ...audioInput,
       '-map', '0:v', '-map', '1:a',
-      '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
-      '-pix_fmt', 'yuv420p',
-      '-b:v', '5000k', '-maxrate:v', '7500k', '-bufsize:v', '2500k',
-      '-bf', '0',
+      ...videoEncode,
       '-force_key_frames', 'expr:gte(t,n_forced*1)',
       '-r', String(fps),
       '-c:a', 'libopus', '-b:a', '128k', '-ac', '2', '-ar', '48000',
@@ -168,7 +192,8 @@ export class DiscordStreamer {
     this.streaming = true;
     const mode = useXvfb ? `x11grab(${display})` : 'fallback';
     const audio = usePulse ? 'pulse' : 'silent';
-    console.log(`[Discord] Go Live at ${width}x${height}@${fps}fps [video:${mode} audio:${audio}]`);
+    const encoder = useVaapi ? 'h264_vaapi' : 'libx264';
+    console.log(`[Discord] Go Live at ${width}x${height}@${fps}fps [video:${mode} encoder:${encoder} audio:${audio}]`);
 
     try {
       await playStream(ffmpeg.stdout!, this.streamer, {

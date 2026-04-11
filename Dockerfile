@@ -12,6 +12,9 @@ RUN apt-get update && apt-get install -y \
   fonts-noto-core \
   fonts-freefont-ttf \
   fonts-dejavu-core \
+  vainfo \
+  i965-va-driver \
+  intel-media-va-driver \
   --no-install-recommends \
   && rm -rf /var/lib/apt/lists/* \
   && mkdir -p /run/dbus
