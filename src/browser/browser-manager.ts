@@ -42,15 +42,14 @@ export class BrowserManager extends EventEmitter {
       ignoreDefaultArgs: ['--enable-automation'],
       args: [
         '--no-sandbox',
-        '--disable-setuid-sandbox',
         '--disable-gpu',
         '--disable-dev-shm-usage',
         '--autoplay-policy=no-user-gesture-required',
         '--disable-infobars',
-        '--start-maximized',
+        '--kiosk',
         `--window-size=${config.stream.width},${config.stream.height}`,
       ],
-      defaultViewport: {
+      defaultViewport: useXvfb ? null : {
         width: config.stream.width,
         height: config.stream.height,
       },
@@ -152,10 +151,10 @@ export class BrowserManager extends EventEmitter {
 
     await cdp.send('Page.startScreencast', {
       format: 'jpeg',
-      quality: 90,
-      maxWidth: this.currentWidth,
-      maxHeight: this.currentHeight,
-      everyNthFrame: 1,
+      quality: 50,
+      maxWidth: 960,
+      maxHeight: 540,
+      everyNthFrame: 2,
     });
 
     this.screencastRunning = true;
