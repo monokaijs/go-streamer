@@ -46,10 +46,11 @@ export class BrowserManager extends EventEmitter {
         '--disable-dev-shm-usage',
         '--autoplay-policy=no-user-gesture-required',
         '--disable-infobars',
-        '--kiosk',
+        '--window-position=0,0',
+        '--start-fullscreen',
         `--window-size=${config.stream.width},${config.stream.height}`,
       ],
-      defaultViewport: useXvfb ? null : {
+      defaultViewport: {
         width: config.stream.width,
         height: config.stream.height,
       },
@@ -59,6 +60,16 @@ export class BrowserManager extends EventEmitter {
     if (pages.length > 0) {
       await this.registerPage(pages[0]);
       this.activePageId = this.getPageId(pages[0]);
+
+      if (useXvfb) {
+        const cdp = await pages[0].createCDPSession();
+        const { windowId } = await cdp.send('Browser.getWindowForTarget');
+        await cdp.send('Browser.setWindowBounds', {
+          windowId,
+          bounds: { left: 0, top: 0, width: config.stream.width, height: config.stream.height, windowState: 'normal' },
+        });
+        await cdp.detach();
+      }
     }
 
     this.browser.on('targetcreated', async (target: Target) => {
