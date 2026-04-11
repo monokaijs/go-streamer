@@ -94,9 +94,9 @@ export class WebServer {
         this.browserManager.reload();
       });
 
-      socket.on('settings:resolution', (data: { width: number; height: number }) => {
-        this.browserManager.setResolution(data.width, data.height);
+      socket.on('settings:resolution', async (data: { width: number; height: number }) => {
         this.discordStreamer.setStreamResolution(data.width, data.height);
+        await this.browserManager.setResolution(data.width, data.height);
       });
 
       socket.on('discord:guilds', (_, callback) => {
