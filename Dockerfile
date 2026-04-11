@@ -8,6 +8,10 @@ RUN apt-get update && apt-get install -y \
   xvfb \
   fonts-liberation \
   fonts-noto-color-emoji \
+  fonts-noto-cjk \
+  fonts-noto-core \
+  fonts-freefont-ttf \
+  fonts-dejavu-core \
   --no-install-recommends \
   && rm -rf /var/lib/apt/lists/* \
   && mkdir -p /run/dbus
@@ -28,6 +32,8 @@ RUN npx tsc
 COPY src/web/public/ ./dist/web/public/
 COPY entrypoint.sh ./
 RUN chmod +x entrypoint.sh
+
+RUN mkdir -p /app/data
 
 ENV WEB_PORT=3000
 EXPOSE 3000

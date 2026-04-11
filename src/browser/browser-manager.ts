@@ -43,13 +43,14 @@ export class BrowserManager extends EventEmitter {
       args: [
         '--no-sandbox',
         '--test-type',
-        '--disable-gpu',
         '--disable-dev-shm-usage',
         '--autoplay-policy=no-user-gesture-required',
         '--disable-infobars',
+        '--disable-blink-features=AutomationControlled',
         '--window-position=0,0',
         `--window-size=${config.stream.width},${config.stream.height}`,
         '--app=about:blank',
+        '--user-data-dir=/app/data/chrome-profile',
       ],
       defaultViewport: null,
     });
