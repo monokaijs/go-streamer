@@ -1,6 +1,8 @@
 import { Client } from 'discord.js-selfbot-v13';
 import { Streamer, playStream } from '@dank074/discord-video-stream';
 import { config } from '../config.js';
+import { CommandHandler } from './command-handler.js';
+import type { BrowserManager } from '../browser/browser-manager.js';
 
 interface GuildInfo {
   id: string;
@@ -25,10 +27,16 @@ export class DiscordStreamer {
   private streamWidth = config.stream.width;
   private streamHeight = config.stream.height;
   private streamFps = config.stream.fps;
+  private commandHandler: CommandHandler | null = null;
+  private browserManager: BrowserManager | null = null;
 
   constructor() {
     this.client = new Client();
     this.streamer = new Streamer(this.client);
+  }
+
+  setBrowserManager(browserManager: BrowserManager) {
+    this.browserManager = browserManager;
   }
 
   async login() {
@@ -36,6 +44,12 @@ export class DiscordStreamer {
     await this.client.login(config.discord.token);
     this.loggedIn = true;
     console.log(`[Discord] Logged in as ${this.client.user?.tag}`);
+
+    if (this.browserManager) {
+      const channelIds = config.discord.commandChannels;
+      this.commandHandler = new CommandHandler(this.client, this.browserManager, channelIds);
+      this.commandHandler.start();
+    }
   }
 
   isLoggedIn() {

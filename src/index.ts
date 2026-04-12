@@ -12,6 +12,7 @@ async function main() {
 
   const browserManager = new BrowserManager();
   const discordStreamer = new DiscordStreamer();
+  discordStreamer.setBrowserManager(browserManager);
   const webServer = new WebServer(browserManager, discordStreamer);
 
   const shutdown = async () => {

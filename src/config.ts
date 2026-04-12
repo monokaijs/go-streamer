@@ -6,6 +6,7 @@ export const config = {
   },
   discord: {
     token: process.env.DISCORD_TOKEN || '',
+    commandChannels: (process.env.DISCORD_COMMAND_CHANNELS || '').split(',').map(s => s.trim()).filter(Boolean),
   },
   web: {
     port: parseInt(process.env.WEB_PORT || '3000', 10),

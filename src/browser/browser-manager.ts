@@ -296,6 +296,38 @@ export class BrowserManager extends EventEmitter {
     };
   }
 
+  async executeOnActivePage(script: string): Promise<any> {
+    if (!this.activePageId) return null;
+    const page = this.pages.get(this.activePageId);
+    if (!page || page.isClosed()) return null;
+    try {
+      return await page.evaluate(script);
+    } catch {
+      return null;
+    }
+  }
+
+  async clickAt(x: number, y: number) {
+    if (!this.activePageId) return;
+    const page = this.pages.get(this.activePageId);
+    if (!page || page.isClosed()) return;
+    await page.mouse.click(x, y);
+  }
+
+  async typeText(text: string) {
+    if (!this.activePageId) return;
+    const page = this.pages.get(this.activePageId);
+    if (!page || page.isClosed()) return;
+    await page.keyboard.type(text);
+  }
+
+  async pressKey(key: string) {
+    if (!this.activePageId) return;
+    const page = this.pages.get(this.activePageId);
+    if (!page || page.isClosed()) return;
+    await page.keyboard.press(key as any);
+  }
+
   async shutdown() {
     if (this.activeCdp && this.screencastRunning) {
       try {
