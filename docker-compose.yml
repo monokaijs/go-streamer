@@ -1,0 +1,14 @@
+services:
+  go-streamer:
+    image: ghcr.io/monokaijs/go-streamer:latest
+    # build: .
+    container_name: go-streamer
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+    devices:
+      - /dev/dri:/dev/dri
