@@ -1,4 +1,4 @@
-import { Client, Message, MessageEmbed } from 'discord.js-selfbot-v13';
+import { Client, Message } from 'discord.js-selfbot-v13';
 import type { BrowserManager } from '../browser/browser-manager.js';
 
 const PREFIX = '!';
@@ -246,20 +246,15 @@ const commands: Record<string, { handler: CommandFn; description: string; usage?
 
       const status = info.paused ? '⏸️ Paused' : '▶️ Playing';
       const vol = info.muted ? '🔇 Muted' : `🔊 ${info.volume}%`;
-      const time = `${formatTime(info.currentTime)} / ${formatTime(info.duration)}`;
       const bar = progressBar(info.currentTime, info.duration);
 
-      const embed = new MessageEmbed()
-        .setTitle(title || 'Now Playing')
-        .setDescription([
-          `**Status:** ${status}`,
-          `**Volume:** ${vol}`,
-          `\`${formatTime(info.currentTime)}\` ${bar} \`${formatTime(info.duration)}\``,
-        ].join('\n'))
-        .setColor('#5865F2')
-        .setTimestamp();
+      const lines = [
+        `🎬 **${title || 'Now Playing'}**`,
+        `${status} — ${vol}`,
+        `\`${formatTime(info.currentTime)}\` ${bar} \`${formatTime(info.duration)}\``,
+      ];
 
-      message.reply({ embeds: [embed] });
+      message.reply(lines.join('\n'));
     },
   },
 
@@ -348,14 +343,7 @@ const commands: Record<string, { handler: CommandFn; description: string; usage?
           return `\`!${name}\` — ${cmd.description}${usage}`;
         });
 
-      const embed = new MessageEmbed()
-        .setTitle('🎮 Stream Control Commands')
-        .setDescription(lines.join('\n'))
-        .setColor('#5865F2')
-        .setFooter({ text: 'Go Streamer • Media Control' })
-        .setTimestamp();
-
-      message.reply({ embeds: [embed] });
+      message.reply(`🎮 **Stream Control Commands**\n${lines.join('\n')}`);
     },
   },
 };
