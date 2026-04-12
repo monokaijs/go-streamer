@@ -1,5 +1,7 @@
 import { Client } from 'discord.js-selfbot-v13';
 import { Streamer, playStream } from '@dank074/discord-video-stream';
+import { spawn, execSync } from 'child_process';
+import fs from 'fs';
 import { config } from '../config.js';
 import { CommandHandler } from './command-handler.js';
 import type { BrowserManager } from '../browser/browser-manager.js';
@@ -29,6 +31,7 @@ export class DiscordStreamer {
   private streamFps = config.stream.fps;
   private commandHandler: CommandHandler | null = null;
   private browserManager: BrowserManager | null = null;
+  private pendingRestart = false;
 
   constructor() {
     this.client = new Client();
@@ -98,6 +101,24 @@ export class DiscordStreamer {
     this.streamHeight = height;
   }
 
+  setStreamFps(fps: number) {
+    this.streamFps = fps;
+    if (this.streaming) {
+      this.restartStreamLoop();
+    }
+  }
+
+  getStreamFps() {
+    return this.streamFps;
+  }
+
+  private restartStreamLoop() {
+    this.pendingRestart = true;
+    if (this.ffmpegProcess) {
+      this.ffmpegProcess.kill('SIGTERM');
+    }
+  }
+
   async startStream(guildId: string, channelId: string) {
     if (!this.loggedIn) throw new Error('Not logged in');
     if (this.streaming) {
@@ -113,8 +134,7 @@ export class DiscordStreamer {
   }
 
   private async startStreamLoop() {
-    const { spawn, execSync } = await import('child_process');
-    const fs = await import('fs');
+
 
     const { width, height, fps } = {
       width: this.streamWidth,
@@ -241,9 +261,15 @@ export class DiscordStreamer {
     } catch (err) {
       console.error('[Discord] Streaming error:', err);
     } finally {
-      this.streaming = false;
       ffmpeg.kill('SIGTERM');
       this.ffmpegProcess = null;
+      if (this.pendingRestart) {
+        this.pendingRestart = false;
+        console.log('[Discord] Restarting stream with new settings...');
+        this.startStreamLoop();
+      } else {
+        this.streaming = false;
+      }
     }
   }
 

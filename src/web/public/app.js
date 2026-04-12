@@ -62,12 +62,14 @@ const settingsPanel = document.getElementById('settings-panel');
 const settingsBackdrop = document.getElementById('settings-backdrop');
 const customWidthInput = document.getElementById('custom-width');
 const customHeightInput = document.getElementById('custom-height');
+const customFpsInput = document.getElementById('custom-fps');
 
 let tabs = [];
 let activeTabId = null;
 let canvasRect = null;
 let streamWidth = 1280;
 let streamHeight = 720;
+let streamFps = 30;
 let frameCount = 0;
 let lastFpsTime = Date.now();
 let connected = false;
@@ -100,7 +102,13 @@ function onDisconnected() {
 function setupSocketListeners() {
   const frameImg = new Image();
   let frameLoading = false;
+  let currentBlobUrl = null;
+
   frameImg.onload = () => {
+    if (currentBlobUrl) {
+      URL.revokeObjectURL(currentBlobUrl);
+      currentBlobUrl = null;
+    }
     canvas.width = frameImg.width;
     canvas.height = frameImg.height;
     ctx.drawImage(frameImg, 0, 0);
@@ -108,10 +116,12 @@ function setupSocketListeners() {
     frameLoading = false;
   };
 
-  socket.on('frame', (base64) => {
+  socket.on('frame', (data) => {
     if (frameLoading) return;
     frameLoading = true;
-    frameImg.src = 'data:image/jpeg;base64,' + base64;
+    const blob = new Blob([data], { type: 'image/jpeg' });
+    currentBlobUrl = URL.createObjectURL(blob);
+    frameImg.src = currentBlobUrl;
   });
 
 setInterval(() => {
@@ -265,7 +275,11 @@ canvasContainer.addEventListener('mouseup', (e) => {
   });
 });
 
+let lastMouseMove = 0;
 canvasContainer.addEventListener('mousemove', (e) => {
+  const now = Date.now();
+  if (now - lastMouseMove < 33) return;
+  lastMouseMove = now;
   const { x, y } = mapCoords(e.clientX, e.clientY);
   socket.emit('mouse', {
     type: 'mousemove',
@@ -390,7 +404,7 @@ document.getElementById('settings-close').addEventListener('click', closeSetting
 settingsBackdrop.addEventListener('click', closeSettings);
 
 function updatePresetHighlight(w, h) {
-  document.querySelectorAll('.preset-btn').forEach(btn => {
+  document.querySelectorAll('#resolution-presets .preset-btn').forEach(btn => {
     const bw = parseInt(btn.dataset.w);
     const bh = parseInt(btn.dataset.h);
     btn.classList.toggle('active', bw === w && bh === h);
@@ -398,6 +412,13 @@ function updatePresetHighlight(w, h) {
   customWidthInput.value = w;
   customHeightInput.value = h;
   resolutionDisplay.textContent = w + '×' + h;
+}
+
+function updateFpsHighlight(fps) {
+  document.querySelectorAll('#fps-presets .preset-btn').forEach(btn => {
+    btn.classList.toggle('active', parseInt(btn.dataset.fps) === fps);
+  });
+  customFpsInput.value = fps;
 }
 
 function confirmResolution(w, h) {
@@ -433,10 +454,35 @@ customHeightInput.addEventListener('keydown', (e) => {
   e.stopPropagation();
 });
 
+document.getElementById('fps-presets').addEventListener('click', (e) => {
+  const btn = e.target.closest('.preset-btn');
+  if (!btn) return;
+  const fps = parseInt(btn.dataset.fps);
+  if (fps === streamFps) return;
+  socket.emit('settings:fps', fps);
+});
+
+function applyCustomFps() {
+  const fps = parseInt(customFpsInput.value);
+  if (fps >= 1 && fps <= 60 && fps !== streamFps) {
+    socket.emit('settings:fps', fps);
+  }
+}
+
+customFpsInput.addEventListener('change', applyCustomFps);
+customFpsInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') applyCustomFps();
+  e.stopPropagation();
+});
+
   socket.on('settings:updated', (settings) => {
     streamWidth = settings.width;
     streamHeight = settings.height;
     updatePresetHighlight(settings.width, settings.height);
+    if (settings.fps !== undefined) {
+      streamFps = settings.fps;
+      updateFpsHighlight(settings.fps);
+    }
   });
 
 const guildSelect = document.getElementById('discord-guild');

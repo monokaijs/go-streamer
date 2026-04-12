@@ -571,6 +571,28 @@ html, body {
   font-size: 14px;
 }
 
+.fps-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.fps-custom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fps-input {
+  width: 80px;
+}
+
+.fps-unit {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
 .apply-btn {
   height: 36px;
   padding: 0 16px;

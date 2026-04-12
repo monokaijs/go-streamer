@@ -35,6 +35,7 @@ export class BrowserManager extends EventEmitter {
   private currentHeight = config.stream.height;
   private lastFrameTime = 0;
   private readonly previewFps = 15;
+  private viewerCount = 0;
 
   async launch() {
     const useXvfb = !!process.env.DISPLAY;
@@ -52,6 +53,23 @@ export class BrowserManager extends EventEmitter {
         '--disable-session-crashed-bubble',
         '--disable-features=InfiniteSessionRestore',
         '--hide-crash-restore-bubble',
+        '--disable-background-networking',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-breakpad',
+        '--disable-component-update',
+        '--disable-default-apps',
+        '--disable-extensions',
+        '--disable-hang-monitor',
+        '--disable-ipc-flooding-protection',
+        '--disable-popup-blocking',
+        '--disable-prompt-on-repost',
+        '--disable-renderer-backgrounding',
+        '--disable-sync',
+        '--disable-translate',
+        '--metrics-recording-only',
+        '--no-first-run',
+        '--safebrowsing-disable-auto-update',
         '--window-position=0,0',
         `--window-size=${config.stream.width},${config.stream.height}`,
         '--app=about:blank',
@@ -105,7 +123,7 @@ export class BrowserManager extends EventEmitter {
       this.emit('tabs:updated', this.getTabList());
     });
 
-    if (this.activePageId) {
+    if (this.activePageId && this.viewerCount > 0) {
       await this.startScreencast(this.activePageId);
     }
 
@@ -164,7 +182,7 @@ export class BrowserManager extends EventEmitter {
       const now = Date.now();
       if (now - this.lastFrameTime >= 1000 / this.previewFps) {
         this.lastFrameTime = now;
-        this.emit('frame', frame.data);
+        this.emit('frame', Buffer.from(frame.data, 'base64'));
       }
     });
 
@@ -185,7 +203,16 @@ export class BrowserManager extends EventEmitter {
     if (!page) return;
 
     await page.bringToFront();
-    await this.startScreencast(pageId);
+    if (this.viewerCount > 0) {
+      await this.startScreencast(pageId);
+    } else {
+      this.activePageId = pageId;
+      const cdp = this.cdpSessions.get(pageId);
+      if (cdp) {
+        this.activeCdp = cdp;
+        this.inputHandler.setCdpSession(cdp);
+      }
+    }
     this.emit('tabs:updated', this.getTabList());
   }
 
@@ -328,12 +355,33 @@ export class BrowserManager extends EventEmitter {
     await page.keyboard.press(key as any);
   }
 
-  async shutdown() {
-    if (this.activeCdp && this.screencastRunning) {
+  addViewer() {
+    this.viewerCount++;
+    if (this.viewerCount === 1 && this.activePageId && !this.screencastRunning) {
+      this.startScreencast(this.activePageId);
+    }
+  }
+
+  removeViewer() {
+    this.viewerCount = Math.max(0, this.viewerCount - 1);
+    if (this.viewerCount === 0) {
+      this.stopScreencastCapture();
+    }
+  }
+
+  private async stopScreencastCapture() {
+    if (this.screencastRunning && this.activeCdp) {
       try {
+        this.activeCdp.removeAllListeners('Page.screencastFrame');
         await this.activeCdp.send('Page.stopScreencast');
       } catch {}
+      this.screencastRunning = false;
+      console.log('[Browser] Screencast paused (no viewers)');
     }
+  }
+
+  async shutdown() {
+    await this.stopScreencastCapture();
     if (this.browser) {
       await this.browser.close();
     }

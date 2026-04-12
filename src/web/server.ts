@@ -44,10 +44,14 @@ export class WebServer {
 
     this.io.on('connection', async (socket) => {
       console.log(`[Web] Client connected: ${socket.id}`);
+      this.browserManager.addViewer();
 
       const tabs = await this.browserManager.getTabListAsync();
       socket.emit('tabs:updated', tabs);
-      socket.emit('settings:updated', this.browserManager.getSettings());
+      socket.emit('settings:updated', {
+        ...this.browserManager.getSettings(),
+        fps: this.discordStreamer.getStreamFps(),
+      });
       socket.emit('discord:status', this.discordStreamer.getStatus());
 
       socket.on('mouse', (data) => {
@@ -99,6 +103,15 @@ export class WebServer {
         await this.browserManager.setResolution(data.width, data.height);
       });
 
+      socket.on('settings:fps', (fps: number) => {
+        if (fps < 1 || fps > 60) return;
+        this.discordStreamer.setStreamFps(fps);
+        this.io.emit('settings:updated', {
+          ...this.browserManager.getSettings(),
+          fps,
+        });
+      });
+
       socket.on('discord:guilds', (_, callback) => {
         if (typeof callback === 'function') {
           callback(this.discordStreamer.getGuilds());
@@ -130,14 +143,15 @@ export class WebServer {
       });
 
       socket.on('disconnect', () => {
+        this.browserManager.removeViewer();
         console.log(`[Web] Client disconnected: ${socket.id}`);
       });
     });
 
     let tabUpdateTimer: ReturnType<typeof setTimeout> | null = null;
 
-    this.browserManager.on('frame', (frameBase64: string) => {
-      this.io.volatile.emit('frame', frameBase64);
+    this.browserManager.on('frame', (frameData: Buffer) => {
+      this.io.volatile.emit('frame', frameData);
     });
 
     this.browserManager.on('tabs:updated', (tabs: unknown) => {
