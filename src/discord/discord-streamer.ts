@@ -148,20 +148,21 @@ export class DiscordStreamer {
 
     let hwAccel: 'nvenc' | 'vaapi' | 'none' = 'none';
     try {
-      execSync('nvidia-smi 2>&1', { timeout: 3000 });
+      execSync('nvidia-smi', { timeout: 3000, stdio: 'ignore' });
       hwAccel = 'nvenc';
       console.log('[Discord] HW accel: NVENC detected');
     } catch {
       try {
-        const hasDri = fs.existsSync('/dev/dri/renderD128');
-        console.log(`[Discord] HW accel: renderD128 exists=${hasDri}`);
-        if (hasDri) {
-          execSync('vainfo 2>&1', { timeout: 3000 });
+        if (fs.existsSync('/dev/dri/renderD128')) {
+          execSync(
+            'ffmpeg -y -vaapi_device /dev/dri/renderD128 -f lavfi -i color=c=black:s=64x64:r=1:d=1 -vf format=nv12,hwupload -c:v h264_vaapi -frames:v 1 -f null -',
+            { timeout: 5000, stdio: 'ignore' },
+          );
           hwAccel = 'vaapi';
-          console.log('[Discord] HW accel: VAAPI detected');
+          console.log('[Discord] HW accel: VAAPI detected (h264_vaapi test passed)');
         }
       } catch (e: any) {
-        console.log(`[Discord] HW accel: VAAPI detection failed: ${e.message?.split('\n')[0]}`);
+        console.log(`[Discord] HW accel: VAAPI test failed, using software: ${e.message?.split('\n')[0]}`);
       }
     }
     console.log(`[Discord] HW accel selected: ${hwAccel}`);
