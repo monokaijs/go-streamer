@@ -174,6 +174,7 @@ export class DiscordStreamer {
     let videoInput: string[];
     if (useXvfb) {
       videoInput = [
+        '-use_wallclock_as_timestamps', '1',
         '-thread_queue_size', '512',
         '-f', 'x11grab',
         '-framerate', String(fps),
@@ -189,7 +190,7 @@ export class DiscordStreamer {
     }
 
     const audioInput = usePulse
-      ? ['-thread_queue_size', '512', '-f', 'pulse', '-i', 'virtual_sink.monitor']
+      ? ['-use_wallclock_as_timestamps', '1', '-thread_queue_size', '512', '-f', 'pulse', '-i', 'virtual_sink.monitor']
       : ['-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo'];
 
     let videoEncode: string[];
@@ -228,8 +229,8 @@ export class DiscordStreamer {
       '-map', '0:v', '-map', '1:a',
       ...videoEncode,
       '-force_key_frames', 'expr:gte(t,n_forced*1)',
-      '-r', String(fps),
       '-c:a', 'libopus', '-b:a', '128k', '-ac', '2', '-ar', '48000',
+      '-async', '1',
       '-f', 'nut', 'pipe:1',
     ];
 
