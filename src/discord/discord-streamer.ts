@@ -150,14 +150,21 @@ export class DiscordStreamer {
     try {
       execSync('nvidia-smi 2>&1', { timeout: 3000 });
       hwAccel = 'nvenc';
+      console.log('[Discord] HW accel: NVENC detected');
     } catch {
       try {
-        if (fs.existsSync('/dev/dri/renderD128')) {
+        const hasDri = fs.existsSync('/dev/dri/renderD128');
+        console.log(`[Discord] HW accel: renderD128 exists=${hasDri}`);
+        if (hasDri) {
           execSync('vainfo 2>&1', { timeout: 3000 });
           hwAccel = 'vaapi';
+          console.log('[Discord] HW accel: VAAPI detected');
         }
-      } catch {}
+      } catch (e: any) {
+        console.log(`[Discord] HW accel: VAAPI detection failed: ${e.message?.split('\n')[0]}`);
+      }
     }
+    console.log(`[Discord] HW accel selected: ${hwAccel}`);
 
     const hwInit = hwAccel === 'vaapi'
       ? ['-vaapi_device', '/dev/dri/renderD128']
