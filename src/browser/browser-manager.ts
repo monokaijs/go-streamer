@@ -1,5 +1,6 @@
 import puppeteer, { Browser, Page, CDPSession, Target } from 'puppeteer';
 import { EventEmitter } from 'events';
+import { execSync } from 'child_process';
 import { InputHandler } from './input-handler.js';
 import { config } from '../config.js';
 
@@ -36,6 +37,7 @@ export class BrowserManager extends EventEmitter {
   private lastFrameTime = 0;
   private readonly previewFps = 15;
   private viewerCount = 0;
+  private restarting = false;
 
   async launch() {
     const useXvfb = !!process.env.DISPLAY;
@@ -98,7 +100,11 @@ export class BrowserManager extends EventEmitter {
     this.browser.on('targetdestroyed', async () => {
       const closedIds: string[] = [];
       for (const [id, page] of this.pages) {
-        if (page.isClosed()) {
+        try {
+          if (page.isClosed()) {
+            closedIds.push(id);
+          }
+        } catch {
           closedIds.push(id);
         }
       }
@@ -121,6 +127,12 @@ export class BrowserManager extends EventEmitter {
       }
 
       this.emit('tabs:updated', this.getTabList());
+    });
+
+    this.browser.on('disconnected', () => {
+      if (this.restarting) return;
+      console.error('[Browser] Chromium crashed unexpectedly, relaunching...');
+      this.handleBrowserCrash();
     });
 
     if (this.activePageId && this.viewerCount > 0) {
@@ -380,11 +392,44 @@ export class BrowserManager extends EventEmitter {
     }
   }
 
+  private async handleBrowserCrash() {
+    this.killBrowserProcessTree();
+    this.cleanupState();
+    try {
+      await this.launch();
+    } catch (err) {
+      console.error('[Browser] Failed to relaunch after crash:', err);
+    }
+  }
+
+  private killBrowserProcessTree() {
+    try {
+      execSync('pkill -9 -f chromium 2>/dev/null || true', { timeout: 5000, stdio: 'ignore' });
+    } catch {}
+  }
+
+  private cleanupState() {
+    for (const cdp of this.cdpSessions.values()) {
+      cdp.removeAllListeners();
+    }
+    this.pages.clear();
+    this.cdpSessions.clear();
+    this.activePageId = null;
+    this.activeCdp = null;
+    this.screencastRunning = false;
+    this.browser = null;
+  }
+
   async shutdown() {
+    this.restarting = true;
     await this.stopScreencastCapture();
     if (this.browser) {
-      await this.browser.close();
+      try {
+        await this.browser.close();
+      } catch {}
     }
+    this.killBrowserProcessTree();
+    this.cleanupState();
     console.log('[Browser] Shut down');
   }
 }
