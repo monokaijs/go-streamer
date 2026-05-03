@@ -47,7 +47,7 @@ loginForm.addEventListener('submit', (e) => {
   connectSocket(pw);
 });
 
-
+// ─── DOM refs ────────────────────────────────────────────────────────────────
 
 const canvas = document.getElementById('screen');
 const ctx = canvas.getContext('2d');
@@ -63,6 +63,13 @@ const settingsBackdrop = document.getElementById('settings-backdrop');
 const customWidthInput = document.getElementById('custom-width');
 const customHeightInput = document.getElementById('custom-height');
 const customFpsInput = document.getElementById('custom-fps');
+const guildSelect = document.getElementById('discord-guild');
+const channelSelect = document.getElementById('discord-channel');
+const streamBtn = document.getElementById('discord-stream-btn');
+const discordStatus = document.getElementById('discord-status');
+const refreshBtn = document.getElementById('discord-refresh');
+
+// ─── State ────────────────────────────────────────────────────────────────────
 
 let tabs = [];
 let activeTabId = null;
@@ -73,6 +80,9 @@ let streamFps = 30;
 let frameCount = 0;
 let lastFpsTime = Date.now();
 let connected = false;
+let discordState = { loggedIn: false, streaming: false, username: null, guildId: null, channelId: null };
+
+// ─── Canvas rect tracking ─────────────────────────────────────────────────────
 
 function updateCanvasRect() {
   canvasRect = canvas.getBoundingClientRect();
@@ -84,6 +94,8 @@ const resizeObserver = new ResizeObserver(() => {
   updateCanvasRect();
 });
 resizeObserver.observe(canvas);
+
+// ─── Connection state ─────────────────────────────────────────────────────────
 
 function onConnected() {
   connected = true;
@@ -99,6 +111,8 @@ function onDisconnected() {
   overlay.classList.remove('hidden');
 }
 
+// ─── Socket listeners (re-registered on each new socket) ─────────────────────
+
 function setupSocketListeners() {
   const frameImg = new Image();
   let frameLoading = false;
@@ -109,10 +123,20 @@ function setupSocketListeners() {
       URL.revokeObjectURL(currentBlobUrl);
       currentBlobUrl = null;
     }
-    canvas.width = frameImg.width;
-    canvas.height = frameImg.height;
+    if (canvas.width !== frameImg.width || canvas.height !== frameImg.height) {
+      canvas.width = frameImg.width;
+      canvas.height = frameImg.height;
+    }
     ctx.drawImage(frameImg, 0, 0);
     frameCount++;
+    frameLoading = false;
+  };
+
+  frameImg.onerror = () => {
+    if (currentBlobUrl) {
+      URL.revokeObjectURL(currentBlobUrl);
+      currentBlobUrl = null;
+    }
     frameLoading = false;
   };
 
@@ -124,15 +148,6 @@ function setupSocketListeners() {
     frameImg.src = currentBlobUrl;
   });
 
-setInterval(() => {
-  const now = Date.now();
-  const elapsed = (now - lastFpsTime) / 1000;
-  const fps = Math.round(frameCount / elapsed);
-  fpsCounter.textContent = fps + ' FPS';
-  frameCount = 0;
-  lastFpsTime = now;
-}, 1000);
-
   socket.on('tabs:updated', (tabList) => {
     tabs = tabList;
     renderTabs();
@@ -143,8 +158,45 @@ setInterval(() => {
     }
   });
 
+  socket.on('settings:updated', (settings) => {
+    streamWidth = settings.width;
+    streamHeight = settings.height;
+    updatePresetHighlight(settings.width, settings.height);
+    if (settings.fps !== undefined) {
+      streamFps = settings.fps;
+      updateFpsHighlight(settings.fps);
+    }
+  });
+
+  socket.on('discord:status', (status) => {
+    updateDiscordStatus(status);
+    if (status.loggedIn && guildSelect.options.length <= 1) {
+      loadGuilds();
+    }
+  });
+
+  socket.on('discord:error', (msg) => {
+    console.error('[Discord]', msg);
+    streamBtn.disabled = false;
+    streamBtn.textContent = 'Start Streaming';
+    streamBtn.classList.remove('streaming');
+  });
+}
+
+// ─── FPS counter ──────────────────────────────────────────────────────────────
+
+setInterval(() => {
+  const now = Date.now();
+  const elapsed = (now - lastFpsTime) / 1000;
+  const fps = Math.round(frameCount / elapsed);
+  fpsCounter.textContent = fps + ' FPS';
+  frameCount = 0;
+  lastFpsTime = now;
+}, 1000);
+
+// ─── Tab rendering ────────────────────────────────────────────────────────────
+
 function renderTabs() {
-  const existingNew = tabBar.querySelector('.tab-new');
   tabBar.innerHTML = '';
 
   tabs.forEach(tab => {
@@ -185,6 +237,8 @@ function renderTabs() {
   tabBar.appendChild(newBtn);
 }
 
+// ─── Navigation buttons ───────────────────────────────────────────────────────
+
 document.getElementById('btn-back').addEventListener('click', () => {
   socket.emit('nav:back');
 });
@@ -212,13 +266,12 @@ urlBar.addEventListener('focus', () => {
   urlBar.select();
 });
 
+// ─── Coordinate mapping ───────────────────────────────────────────────────────
+
 function mapCoords(clientX, clientY) {
   if (!canvasRect) updateCanvasRect();
   const displayWidth = canvasRect.width;
   const displayHeight = canvasRect.height;
-
-  const scaleX = streamWidth / displayWidth;
-  const scaleY = streamHeight / displayHeight;
 
   const aspectStream = streamWidth / streamHeight;
   const aspectDisplay = displayWidth / displayHeight;
@@ -251,27 +304,24 @@ function getModifiers(e) {
   return mod;
 }
 
+// ─── Mouse / touch input ──────────────────────────────────────────────────────
+
 const canvasContainer = document.querySelector('.canvas-container');
 
 canvasContainer.addEventListener('mousedown', (e) => {
   if (e.target === urlBar || e.target.closest('.navbar') || e.target.closest('.tab-bar')) return;
   const { x, y } = mapCoords(e.clientX, e.clientY);
   socket.emit('mouse', {
-    type: 'mousedown',
-    x, y,
-    button: e.button,
-    clickCount: e.detail,
-    modifiers: getModifiers(e),
+    type: 'mousedown', x, y,
+    button: e.button, clickCount: e.detail, modifiers: getModifiers(e),
   });
 });
 
 canvasContainer.addEventListener('mouseup', (e) => {
   const { x, y } = mapCoords(e.clientX, e.clientY);
   socket.emit('mouse', {
-    type: 'mouseup',
-    x, y,
-    button: e.button,
-    modifiers: getModifiers(e),
+    type: 'mouseup', x, y,
+    button: e.button, modifiers: getModifiers(e),
   });
 });
 
@@ -281,44 +331,21 @@ canvasContainer.addEventListener('mousemove', (e) => {
   if (now - lastMouseMove < 33) return;
   lastMouseMove = now;
   const { x, y } = mapCoords(e.clientX, e.clientY);
-  socket.emit('mouse', {
-    type: 'mousemove',
-    x, y,
-    button: 0,
-    modifiers: getModifiers(e),
-  });
+  socket.emit('mouse', { type: 'mousemove', x, y, button: 0, modifiers: getModifiers(e) });
 });
 
 canvasContainer.addEventListener('wheel', (e) => {
   e.preventDefault();
   const { x, y } = mapCoords(e.clientX, e.clientY);
-  socket.emit('wheel', {
-    x, y,
-    deltaX: e.deltaX,
-    deltaY: e.deltaY,
-    modifiers: getModifiers(e),
-  });
+  socket.emit('wheel', { x, y, deltaX: e.deltaX, deltaY: e.deltaY, modifiers: getModifiers(e) });
 }, { passive: false });
 
 canvasContainer.addEventListener('contextmenu', (e) => {
   e.preventDefault();
   const { x, y } = mapCoords(e.clientX, e.clientY);
-  socket.emit('mouse', {
-    type: 'mousedown',
-    x, y,
-    button: 2,
-    clickCount: 1,
-    modifiers: getModifiers(e),
-  });
-  socket.emit('mouse', {
-    type: 'mouseup',
-    x, y,
-    button: 2,
-    modifiers: getModifiers(e),
-  });
+  socket.emit('mouse', { type: 'mousedown', x, y, button: 2, clickCount: 1, modifiers: getModifiers(e) });
+  socket.emit('mouse', { type: 'mouseup',   x, y, button: 2, modifiers: getModifiers(e) });
 });
-
-
 
 canvasContainer.addEventListener('touchstart', (e) => {
   e.preventDefault();
@@ -347,6 +374,48 @@ canvasContainer.addEventListener('touchcancel', (e) => {
   e.preventDefault();
   socket.emit('touch', { type: 'touchcancel', touches: [] });
 }, { passive: false });
+
+// ─── Keyboard input (registered once at module level) ─────────────────────────
+
+document.addEventListener('keydown', (e) => {
+  if (!socket) return;
+  if (document.activeElement === urlBar || document.activeElement === loginPassword) return;
+
+  const interceptKeys = ['Tab', 'F5', 'F11', 'F12'];
+  if (e.ctrlKey || e.metaKey) {
+    const ctrlKeys = ['t', 'w', 'r', 'l', 'n', 'p', 'f', 'g', 'u', 'j', 'k'];
+    if (ctrlKeys.includes(e.key.toLowerCase())) {
+      e.preventDefault();
+    }
+  }
+  if (interceptKeys.includes(e.key)) {
+    e.preventDefault();
+  }
+
+  let text = '';
+  if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+    text = e.key;
+  }
+
+  socket.emit('keyboard', {
+    type: 'keydown',
+    key: e.key, code: e.code, keyCode: e.keyCode,
+    modifiers: getModifiers(e), text, location: e.location,
+  });
+});
+
+document.addEventListener('keyup', (e) => {
+  if (!socket) return;
+  if (document.activeElement === urlBar || document.activeElement === loginPassword) return;
+
+  socket.emit('keyboard', {
+    type: 'keyup',
+    key: e.key, code: e.code, keyCode: e.keyCode,
+    modifiers: getModifiers(e), location: e.location,
+  });
+});
+
+// ─── Settings panel ───────────────────────────────────────────────────────────
 
 function openSettings() {
   settingsPanel.classList.remove('hidden');
@@ -434,23 +503,7 @@ customFpsInput.addEventListener('keydown', (e) => {
   e.stopPropagation();
 });
 
-  socket.on('settings:updated', (settings) => {
-    streamWidth = settings.width;
-    streamHeight = settings.height;
-    updatePresetHighlight(settings.width, settings.height);
-    if (settings.fps !== undefined) {
-      streamFps = settings.fps;
-      updateFpsHighlight(settings.fps);
-    }
-  });
-
-const guildSelect = document.getElementById('discord-guild');
-const channelSelect = document.getElementById('discord-channel');
-const streamBtn = document.getElementById('discord-stream-btn');
-const discordStatus = document.getElementById('discord-status');
-const refreshBtn = document.getElementById('discord-refresh');
-
-let discordState = { loggedIn: false, streaming: false, username: null, guildId: null, channelId: null };
+// ─── Discord panel ────────────────────────────────────────────────────────────
 
 function updateDiscordStatus(state) {
   discordState = state;
@@ -546,65 +599,7 @@ streamBtn.addEventListener('click', () => {
 
 refreshBtn.addEventListener('click', loadGuilds);
 
-  socket.on('discord:status', (status) => {
-    updateDiscordStatus(status);
-    if (status.loggedIn && guildSelect.options.length <= 1) {
-      loadGuilds();
-    }
-  });
-
-  socket.on('discord:error', (msg) => {
-    console.error('[Discord]', msg);
-    streamBtn.disabled = false;
-    streamBtn.textContent = 'Start Streaming';
-    streamBtn.classList.remove('streaming');
-  });
-}
-
-document.addEventListener('keydown', (e) => {
-  if (!socket) return;
-  if (document.activeElement === urlBar || document.activeElement === loginPassword) return;
-
-  const interceptKeys = ['Tab', 'F5', 'F11', 'F12'];
-  if (e.ctrlKey || e.metaKey) {
-    const ctrlKeys = ['t', 'w', 'r', 'l', 'n', 'p', 'f', 'g', 'u', 'j', 'k'];
-    if (ctrlKeys.includes(e.key.toLowerCase())) {
-      e.preventDefault();
-    }
-  }
-  if (interceptKeys.includes(e.key)) {
-    e.preventDefault();
-  }
-
-  let text = '';
-  if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
-    text = e.key;
-  }
-
-  socket.emit('keyboard', {
-    type: 'keydown',
-    key: e.key,
-    code: e.code,
-    keyCode: e.keyCode,
-    modifiers: getModifiers(e),
-    text,
-    location: e.location,
-  });
-});
-
-document.addEventListener('keyup', (e) => {
-  if (!socket) return;
-  if (document.activeElement === urlBar || document.activeElement === loginPassword) return;
-
-  socket.emit('keyboard', {
-    type: 'keyup',
-    key: e.key,
-    code: e.code,
-    keyCode: e.keyCode,
-    modifiers: getModifiers(e),
-    location: e.location,
-  });
-});
+// ─── Init ─────────────────────────────────────────────────────────────────────
 
 const savedToken = sessionStorage.getItem('go_streamer_token');
 connectSocket(savedToken || '');
