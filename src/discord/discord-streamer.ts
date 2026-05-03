@@ -48,10 +48,10 @@ export class DiscordStreamer {
 
   async login() {
     if (!config.discord.token) return;
+    await this.detectHwAccel();
     await this.client.login(config.discord.token);
     this.loggedIn = true;
     console.log(`[Discord] Logged in as ${this.client.user?.tag}`);
-    await this.detectHwAccel();
 
     if (this.browserManager) {
       const channelIds = config.discord.commandChannels;
@@ -124,6 +124,24 @@ export class DiscordStreamer {
     }
   }
 
+  private tryVaapiDriver(driver: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const env = { ...process.env, LIBVA_DRIVER_NAME: driver };
+      const proc = spawn('ffmpeg', [
+        '-y', '-vaapi_device', '/dev/dri/renderD128',
+        '-f', 'lavfi', '-i', 'color=c=black:s=64x64:r=1:d=1',
+        '-vf', 'format=nv12,hwupload', '-c:v', 'h264_vaapi',
+        '-frames:v', '1', '-f', 'null', '-',
+      ], { stdio: 'ignore', env });
+      const timer = setTimeout(() => {
+        try { proc.kill('SIGKILL'); } catch {}
+        resolve(false);
+      }, 4000);
+      proc.on('close', (code) => { clearTimeout(timer); resolve(code === 0); });
+      proc.on('error', () => { clearTimeout(timer); resolve(false); });
+    });
+  }
+
   private async detectHwAccel() {
     try {
       execSync('nvidia-smi', { timeout: 3000, stdio: 'ignore' });
@@ -132,26 +150,21 @@ export class DiscordStreamer {
       return;
     } catch {}
     if (fs.existsSync('/dev/dri/renderD128')) {
-      // Try each known VAAPI driver name; AMD (radeonsi) first, then Intel
       const candidates: Array<{ driver: string; label: string }> = [
         { driver: 'radeonsi', label: 'AMD radeonsi' },
         { driver: 'iHD',      label: 'Intel iHD' },
         { driver: 'i965',     label: 'Intel i965' },
       ];
       for (const { driver, label } of candidates) {
-        try {
-          const env = { ...process.env, LIBVA_DRIVER_NAME: driver };
-          execSync(
-            'ffmpeg -y -vaapi_device /dev/dri/renderD128 -f lavfi -i color=c=black:s=64x64:r=1:d=1 -vf format=nv12,hwupload -c:v h264_vaapi -frames:v 1 -f null -',
-            { timeout: 5000, stdio: 'ignore', env },
-          );
+        const ok = await this.tryVaapiDriver(driver);
+        if (ok) {
           this.hwAccel = 'vaapi';
           this.vaApiEnv = { LIBVA_DRIVER_NAME: driver };
           console.log(`[Discord] HW accel: VAAPI detected (${label})`);
           return;
-        } catch {}
+        }
       }
-      console.log('[Discord] HW accel: VAAPI test failed for all drivers, using software encoding');
+      console.log('[Discord] HW accel: VAAPI unavailable, using software encoding');
     }
     this.hwAccel = 'none';
     console.log('[Discord] HW accel selected: none');
@@ -220,7 +233,7 @@ export class DiscordStreamer {
         '-c:v', 'h264_nvenc',
         '-preset', 'p4', '-tune', 'll',
         '-pix_fmt', 'yuv420p',
-        '-b:v', '5000k', '-maxrate:v', '7500k', '-bufsize:v', '2500k',
+        '-b:v', '5000k', '-maxrate:v', '7500k', '-bufsize:v', '250k',
         '-bf', '0',
       ];
     } else if (hwAccel === 'vaapi') {
@@ -234,7 +247,7 @@ export class DiscordStreamer {
       videoEncode = [
         '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
         '-pix_fmt', 'yuv420p',
-        '-b:v', '5000k', '-maxrate:v', '7500k', '-bufsize:v', '2500k',
+        '-b:v', '5000k', '-maxrate:v', '7500k', '-bufsize:v', '250k',
         '-bf', '0',
       ];
     }

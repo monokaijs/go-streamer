@@ -2,6 +2,7 @@ services:
   go-streamer:
     image: go-streamer:local
     build: .
+    init: true
     container_name: go-streamer
     restart: unless-stopped
     ports:
