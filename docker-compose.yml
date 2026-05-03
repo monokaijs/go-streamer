@@ -1,7 +1,7 @@
 services:
   go-streamer:
-    image: ghcr.io/monokaijs/go-streamer:latest
-    # build: .
+    image: go-streamer:local
+    build: .
     container_name: go-streamer
     restart: unless-stopped
     ports:

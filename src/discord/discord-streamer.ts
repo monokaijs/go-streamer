@@ -34,6 +34,7 @@ export class DiscordStreamer {
   private browserManager: BrowserManager | null = null;
   private pendingRestart = false;
   private hwAccel: 'nvenc' | 'vaapi' | 'none' = 'none';
+  private vaApiEnv: Record<string, string> = {};
 
   constructor() {
     this.client = new Client();
@@ -130,18 +131,27 @@ export class DiscordStreamer {
       console.log('[Discord] HW accel: NVENC detected');
       return;
     } catch {}
-    try {
-      if (fs.existsSync('/dev/dri/renderD128')) {
-        execSync(
-          'ffmpeg -y -vaapi_device /dev/dri/renderD128 -f lavfi -i color=c=black:s=64x64:r=1:d=1 -vf format=nv12,hwupload -c:v h264_vaapi -frames:v 1 -f null -',
-          { timeout: 5000, stdio: 'ignore' },
-        );
-        this.hwAccel = 'vaapi';
-        console.log('[Discord] HW accel: VAAPI detected (h264_vaapi test passed)');
-        return;
+    if (fs.existsSync('/dev/dri/renderD128')) {
+      // Try each known VAAPI driver name; AMD (radeonsi) first, then Intel
+      const candidates: Array<{ driver: string; label: string }> = [
+        { driver: 'radeonsi', label: 'AMD radeonsi' },
+        { driver: 'iHD',      label: 'Intel iHD' },
+        { driver: 'i965',     label: 'Intel i965' },
+      ];
+      for (const { driver, label } of candidates) {
+        try {
+          const env = { ...process.env, LIBVA_DRIVER_NAME: driver };
+          execSync(
+            'ffmpeg -y -vaapi_device /dev/dri/renderD128 -f lavfi -i color=c=black:s=64x64:r=1:d=1 -vf format=nv12,hwupload -c:v h264_vaapi -frames:v 1 -f null -',
+            { timeout: 5000, stdio: 'ignore', env },
+          );
+          this.hwAccel = 'vaapi';
+          this.vaApiEnv = { LIBVA_DRIVER_NAME: driver };
+          console.log(`[Discord] HW accel: VAAPI detected (${label})`);
+          return;
+        } catch {}
       }
-    } catch (e: any) {
-      console.log(`[Discord] HW accel: VAAPI test failed, using software: ${e.message?.split('\n')[0]}`);
+      console.log('[Discord] HW accel: VAAPI test failed for all drivers, using software encoding');
     }
     this.hwAccel = 'none';
     console.log('[Discord] HW accel selected: none');
@@ -248,6 +258,7 @@ export class DiscordStreamer {
 
     const ffmpeg = spawn('ffmpeg', ffmpegArgs, {
       stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, ...this.vaApiEnv },
     });
     this.ffmpegProcess = ffmpeg;
 
