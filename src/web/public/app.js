@@ -318,48 +318,7 @@ canvasContainer.addEventListener('contextmenu', (e) => {
   });
 });
 
-document.addEventListener('keydown', (e) => {
-  if (document.activeElement === urlBar || document.activeElement === loginPassword) return;
 
-  const interceptKeys = ['Tab', 'F5', 'F11', 'F12'];
-  if (e.ctrlKey || e.metaKey) {
-    const ctrlKeys = ['t', 'w', 'r', 'l', 'n', 'p', 'f', 'g', 'u', 'j', 'k'];
-    if (ctrlKeys.includes(e.key.toLowerCase())) {
-      e.preventDefault();
-    }
-  }
-  if (interceptKeys.includes(e.key)) {
-    e.preventDefault();
-  }
-
-  let text = '';
-  if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
-    text = e.key;
-  }
-
-  socket.emit('keyboard', {
-    type: 'keydown',
-    key: e.key,
-    code: e.code,
-    keyCode: e.keyCode,
-    modifiers: getModifiers(e),
-    text,
-    location: e.location,
-  });
-});
-
-document.addEventListener('keyup', (e) => {
-  if (document.activeElement === urlBar || document.activeElement === loginPassword) return;
-
-  socket.emit('keyboard', {
-    type: 'keyup',
-    key: e.key,
-    code: e.code,
-    keyCode: e.keyCode,
-    modifiers: getModifiers(e),
-    location: e.location,
-  });
-});
 
 canvasContainer.addEventListener('touchstart', (e) => {
   e.preventDefault();
@@ -601,6 +560,51 @@ refreshBtn.addEventListener('click', loadGuilds);
     streamBtn.classList.remove('streaming');
   });
 }
+
+document.addEventListener('keydown', (e) => {
+  if (!socket) return;
+  if (document.activeElement === urlBar || document.activeElement === loginPassword) return;
+
+  const interceptKeys = ['Tab', 'F5', 'F11', 'F12'];
+  if (e.ctrlKey || e.metaKey) {
+    const ctrlKeys = ['t', 'w', 'r', 'l', 'n', 'p', 'f', 'g', 'u', 'j', 'k'];
+    if (ctrlKeys.includes(e.key.toLowerCase())) {
+      e.preventDefault();
+    }
+  }
+  if (interceptKeys.includes(e.key)) {
+    e.preventDefault();
+  }
+
+  let text = '';
+  if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+    text = e.key;
+  }
+
+  socket.emit('keyboard', {
+    type: 'keydown',
+    key: e.key,
+    code: e.code,
+    keyCode: e.keyCode,
+    modifiers: getModifiers(e),
+    text,
+    location: e.location,
+  });
+});
+
+document.addEventListener('keyup', (e) => {
+  if (!socket) return;
+  if (document.activeElement === urlBar || document.activeElement === loginPassword) return;
+
+  socket.emit('keyboard', {
+    type: 'keyup',
+    key: e.key,
+    code: e.code,
+    keyCode: e.keyCode,
+    modifiers: getModifiers(e),
+    location: e.location,
+  });
+});
 
 const savedToken = sessionStorage.getItem('go_streamer_token');
 connectSocket(savedToken || '');
