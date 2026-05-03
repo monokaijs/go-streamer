@@ -22,6 +22,7 @@ export class DiscordStreamer {
   private streamer: Streamer;
   private client: Client;
   private streaming = false;
+  private starting = false;
   private ffmpegProcess: any = null;
   private loggedIn = false;
   private currentGuildId: string | null = null;
@@ -32,9 +33,11 @@ export class DiscordStreamer {
   private commandHandler: CommandHandler | null = null;
   private browserManager: BrowserManager | null = null;
   private pendingRestart = false;
+  private hwAccel: 'nvenc' | 'vaapi' | 'none' = 'none';
 
   constructor() {
     this.client = new Client();
+    this.client.setMaxListeners(20);
     this.streamer = new Streamer(this.client);
   }
 
@@ -47,6 +50,7 @@ export class DiscordStreamer {
     await this.client.login(config.discord.token);
     this.loggedIn = true;
     console.log(`[Discord] Logged in as ${this.client.user?.tag}`);
+    await this.detectHwAccel();
 
     if (this.browserManager) {
       const channelIds = config.discord.commandChannels;
@@ -119,23 +123,51 @@ export class DiscordStreamer {
     }
   }
 
+  private async detectHwAccel() {
+    try {
+      execSync('nvidia-smi', { timeout: 3000, stdio: 'ignore' });
+      this.hwAccel = 'nvenc';
+      console.log('[Discord] HW accel: NVENC detected');
+      return;
+    } catch {}
+    try {
+      if (fs.existsSync('/dev/dri/renderD128')) {
+        execSync(
+          'ffmpeg -y -vaapi_device /dev/dri/renderD128 -f lavfi -i color=c=black:s=64x64:r=1:d=1 -vf format=nv12,hwupload -c:v h264_vaapi -frames:v 1 -f null -',
+          { timeout: 5000, stdio: 'ignore' },
+        );
+        this.hwAccel = 'vaapi';
+        console.log('[Discord] HW accel: VAAPI detected (h264_vaapi test passed)');
+        return;
+      }
+    } catch (e: any) {
+      console.log(`[Discord] HW accel: VAAPI test failed, using software: ${e.message?.split('\n')[0]}`);
+    }
+    this.hwAccel = 'none';
+    console.log('[Discord] HW accel selected: none');
+  }
+
   async startStream(guildId: string, channelId: string) {
     if (!this.loggedIn) throw new Error('Not logged in');
-    if (this.streaming) {
-      await this.stopStream();
+    if (this.starting || this.streaming) {
+      if (this.streaming) await this.stopStream();
+      else return;
     }
 
-    this.currentGuildId = guildId;
-    this.currentChannelId = channelId;
+    this.starting = true;
+    try {
+      this.currentGuildId = guildId;
+      this.currentChannelId = channelId;
 
-    await this.streamer.joinVoice(guildId, channelId);
-    console.log(`[Discord] Joined voice channel ${channelId}`);
-    this.startStreamLoop();
+      await this.streamer.joinVoice(guildId, channelId);
+      console.log(`[Discord] Joined voice channel ${channelId}`);
+      this.startStreamLoop();
+    } finally {
+      this.starting = false;
+    }
   }
 
   private async startStreamLoop() {
-
-
     const { width, height, fps } = {
       width: this.streamWidth,
       height: this.streamHeight,
@@ -145,27 +177,7 @@ export class DiscordStreamer {
     const display = process.env.DISPLAY || ':99';
     const useXvfb = !!process.env.DISPLAY;
     const usePulse = !!process.env.PULSE_SERVER;
-
-    let hwAccel: 'nvenc' | 'vaapi' | 'none' = 'none';
-    try {
-      execSync('nvidia-smi', { timeout: 3000, stdio: 'ignore' });
-      hwAccel = 'nvenc';
-      console.log('[Discord] HW accel: NVENC detected');
-    } catch {
-      try {
-        if (fs.existsSync('/dev/dri/renderD128')) {
-          execSync(
-            'ffmpeg -y -vaapi_device /dev/dri/renderD128 -f lavfi -i color=c=black:s=64x64:r=1:d=1 -vf format=nv12,hwupload -c:v h264_vaapi -frames:v 1 -f null -',
-            { timeout: 5000, stdio: 'ignore' },
-          );
-          hwAccel = 'vaapi';
-          console.log('[Discord] HW accel: VAAPI detected (h264_vaapi test passed)');
-        }
-      } catch (e: any) {
-        console.log(`[Discord] HW accel: VAAPI test failed, using software: ${e.message?.split('\n')[0]}`);
-      }
-    }
-    console.log(`[Discord] HW accel selected: ${hwAccel}`);
+    const hwAccel = this.hwAccel;
 
     const hwInit = hwAccel === 'vaapi'
       ? ['-vaapi_device', '/dev/dri/renderD128']
